@@ -66,6 +66,15 @@ Real transaction measurements on Arbitrum Sepolia testnet:
 
 > **Note**: The consistent ~2.1x ratio across all depths confirms that Stylus maintains its efficiency advantage regardless of workload size.
 
+### 🚀 Impact on Scalability
+
+At Depth 32, Solidity consumes **17.32M gas (54% of block limit)**, causing potential network congestion. Stylus consumes only **8.16M gas (25% of block limit)**, making large-scale ZK verification **sustainable** on the mainnet.
+
+| Metric | Solidity | Stylus | Improvement |
+|--------|----------|--------|-------------|
+| Block Usage (Depth 32) | 54% | 25% | **2.1x more headroom** |
+| Max Verifications/Block | ~1.8 | ~3.9 | **2.1x throughput** |
+
 ---
 
 ## Architecture
@@ -210,7 +219,7 @@ starkverifier/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/starkverifier.git
+git clone https://github.com/hoddukzoa12/starkverifier.git
 cd starkverifier
 
 # Install dependencies
