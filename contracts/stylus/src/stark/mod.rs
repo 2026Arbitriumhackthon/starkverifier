@@ -20,6 +20,7 @@ pub mod proof;
 
 use alloy_primitives::U256;
 
+use crate::field::Fp;
 use crate::poseidon::field::BN254Field;
 use crate::poseidon::PoseidonHasher;
 
@@ -78,13 +79,19 @@ pub fn verify_stark(
         return false;
     }
 
-    verify_parsed_proof(&proof, public_inputs)
+    let pub_fp = [
+        Fp::from_u256(public_inputs[0]),
+        Fp::from_u256(public_inputs[1]),
+        Fp::from_u256(public_inputs[2]),
+    ];
+
+    verify_parsed_proof(&proof, &pub_fp)
 }
 
 /// Verify a parsed STARK proof.
 ///
 /// This is the core verification logic after proof parsing.
-fn verify_parsed_proof(proof: &StarkProof, public_inputs: &[U256]) -> bool {
+fn verify_parsed_proof(proof: &StarkProof, public_inputs: &[Fp; 3]) -> bool {
     let log_trace_len = proof.log_trace_len;
     let trace_len = 1u64 << log_trace_len;
 
@@ -125,7 +132,7 @@ fn verify_parsed_proof(proof: &StarkProof, public_inputs: &[U256]) -> bool {
     // =============================
     // Step 4: Verify boundary constraints
     // =============================
-    let trace_domain_first = U256::from(1u64); // g^0 = 1
+    let trace_domain_first = Fp::ONE; // g^0 = 1
     let trace_domain_last = BN254Field::pow(trace_gen, U256::from(trace_len - 1));
 
     let boundary_quotients = evaluate_boundary_quotients(
@@ -133,7 +140,7 @@ fn verify_parsed_proof(proof: &StarkProof, public_inputs: &[U256]) -> bool {
         z,
         trace_domain_first,
         trace_domain_last,
-        [public_inputs[0], public_inputs[1], public_inputs[2]],
+        *public_inputs,
     );
 
     // =============================
@@ -206,9 +213,9 @@ mod tests {
     use super::*;
 
     /// Compute the Fibonacci value at position N using the naive method.
-    fn fibonacci_field(n: u64) -> (U256, U256) {
-        let mut a = U256::from(1u64);
-        let mut b = U256::from(1u64);
+    fn fibonacci_field(n: u64) -> (Fp, Fp) {
+        let mut a = Fp::from_u256(U256::from(1u64));
+        let mut b = Fp::from_u256(U256::from(1u64));
         for _ in 0..n.saturating_sub(1) {
             let new_b = BN254Field::add(a, b);
             a = b;
@@ -221,36 +228,40 @@ mod tests {
     fn test_fibonacci_field_small() {
         // fib(1) = (1, 1)
         let (a, b) = fibonacci_field(1);
-        assert_eq!(a, U256::from(1u64));
-        assert_eq!(b, U256::from(1u64));
+        assert_eq!(a, Fp::from_u256(U256::from(1u64)));
+        assert_eq!(b, Fp::from_u256(U256::from(1u64)));
 
         // fib(2) = (1, 2)
         let (a, b) = fibonacci_field(2);
-        assert_eq!(a, U256::from(1u64));
-        assert_eq!(b, U256::from(2u64));
+        assert_eq!(a, Fp::from_u256(U256::from(1u64)));
+        assert_eq!(b, Fp::from_u256(U256::from(2u64)));
 
         // fib(5) = (5, 8)
         let (a, b) = fibonacci_field(5);
-        assert_eq!(a, U256::from(5u64));
-        assert_eq!(b, U256::from(8u64));
+        assert_eq!(a, Fp::from_u256(U256::from(5u64)));
+        assert_eq!(b, Fp::from_u256(U256::from(8u64)));
 
         // fib(10) = (55, 89)
         let (a, b) = fibonacci_field(10);
-        assert_eq!(a, U256::from(55u64));
-        assert_eq!(b, U256::from(89u64));
+        assert_eq!(a, Fp::from_u256(U256::from(55u64)));
+        assert_eq!(b, Fp::from_u256(U256::from(89u64)));
     }
 
     #[test]
     fn test_fibonacci_field_larger() {
         // fib(20): a=6765, b=10946
         let (a, b) = fibonacci_field(20);
-        assert_eq!(a, U256::from(6765u64));
-        assert_eq!(b, U256::from(10946u64));
+        assert_eq!(a, Fp::from_u256(U256::from(6765u64)));
+        assert_eq!(b, Fp::from_u256(U256::from(10946u64)));
     }
 
     #[test]
     fn test_channel_initialization_deterministic() {
-        let pub_inputs = [U256::from(1u64), U256::from(1u64), U256::from(89u64)];
+        let pub_inputs = [
+            Fp::from_u256(U256::from(1u64)),
+            Fp::from_u256(U256::from(1u64)),
+            Fp::from_u256(U256::from(89u64)),
+        ];
 
         let mut seed1 = pub_inputs[0];
         for i in 1..pub_inputs.len() {
@@ -268,12 +279,12 @@ mod tests {
     #[test]
     fn test_air_constraints_at_ood() {
         // Create a valid Fibonacci transition pair
-        let current = [U256::from(5u64), U256::from(8u64)];
-        let next = [U256::from(8u64), U256::from(13u64)];
+        let current = [Fp::from_u256(U256::from(5u64)), Fp::from_u256(U256::from(8u64))];
+        let next = [Fp::from_u256(U256::from(8u64)), Fp::from_u256(U256::from(13u64))];
 
         let evals = evaluate_transition_ood(current, next);
-        assert_eq!(evals[0], U256::ZERO);
-        assert_eq!(evals[1], U256::ZERO);
+        assert_eq!(evals[0], Fp::ZERO);
+        assert_eq!(evals[1], Fp::ZERO);
     }
 
     fn u(hex: &str) -> U256 {

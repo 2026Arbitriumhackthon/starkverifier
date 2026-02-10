@@ -6,7 +6,7 @@
 //! - S-box: x^5
 //! - Rounds: 8 full rounds + 57 partial rounds
 
-use alloy_primitives::U256;
+use crate::field::Fp;
 
 pub mod constants;
 pub mod field;
@@ -26,17 +26,10 @@ impl PoseidonHasher {
     const PARTIAL_ROUNDS: usize = 57;
 
     /// Hash two field elements using Poseidon
-    ///
-    /// # Arguments
-    /// * `a` - First input element
-    /// * `b` - Second input element
-    ///
-    /// # Returns
-    /// The hash result as a field element
     #[inline]
-    pub fn hash_two(a: U256, b: U256) -> U256 {
+    pub fn hash_two(a: Fp, b: Fp) -> Fp {
         // Initialize state: [0, a, b]
-        let mut state = [U256::ZERO, a, b];
+        let mut state = [Fp::ZERO, a, b];
 
         let half_full = Self::FULL_ROUNDS / 2;
         let mut round_ctr = 0;
@@ -65,58 +58,44 @@ impl PoseidonHasher {
 
     /// Full round: apply round constants, S-box to all elements, then MDS
     #[inline(always)]
-    fn full_round(state: &mut [U256; 3], round_ctr: usize) {
-        // Add round constants
+    fn full_round(state: &mut [Fp; 3], round_ctr: usize) {
         for i in 0..Self::T {
             state[i] = BN254Field::add(state[i], ROUND_CONSTANTS[round_ctr + i]);
         }
-
-        // S-box: x^5 for all elements
         for i in 0..Self::T {
             state[i] = Self::sbox(state[i]);
         }
-
-        // MDS matrix multiplication
         Self::mds_multiply(state);
     }
 
     /// Partial round: apply round constants, S-box only to first element, then MDS
     #[inline(always)]
-    fn partial_round(state: &mut [U256; 3], round_ctr: usize) {
-        // Add round constants
+    fn partial_round(state: &mut [Fp; 3], round_ctr: usize) {
         for i in 0..Self::T {
             state[i] = BN254Field::add(state[i], ROUND_CONSTANTS[round_ctr + i]);
         }
-
-        // S-box only on first element (optimization for partial rounds)
         state[0] = Self::sbox(state[0]);
-
-        // MDS matrix multiplication
         Self::mds_multiply(state);
     }
 
     /// S-box: compute x^5 in the field
-    /// x^5 = x^2 * x^2 * x (using square-and-multiply)
     #[inline(always)]
-    fn sbox(x: U256) -> U256 {
+    fn sbox(x: Fp) -> Fp {
         let x2 = BN254Field::mul(x, x);
         let x4 = BN254Field::mul(x2, x2);
         BN254Field::mul(x4, x)
     }
 
     /// MDS matrix multiplication
-    /// Multiplies state vector by the MDS matrix for diffusion
     #[inline(always)]
-    fn mds_multiply(state: &mut [U256; 3]) {
-        let mut result = [U256::ZERO; 3];
-
+    fn mds_multiply(state: &mut [Fp; 3]) {
+        let mut result = [Fp::ZERO; 3];
         for i in 0..3 {
             for j in 0..3 {
                 let term = BN254Field::mul(MDS_MATRIX[i][j], state[j]);
                 result[i] = BN254Field::add(result[i], term);
             }
         }
-
         *state = result;
     }
 }
@@ -124,11 +103,12 @@ impl PoseidonHasher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloy_primitives::U256;
 
     #[test]
     fn test_hash_deterministic() {
-        let a = U256::from(1u64);
-        let b = U256::from(2u64);
+        let a = Fp::from_u256(U256::from(1u64));
+        let b = Fp::from_u256(U256::from(2u64));
 
         let hash1 = PoseidonHasher::hash_two(a, b);
         let hash2 = PoseidonHasher::hash_two(a, b);
@@ -138,25 +118,29 @@ mod tests {
 
     #[test]
     fn test_hash_different_inputs() {
-        let hash1 = PoseidonHasher::hash_two(U256::from(1u64), U256::from(2u64));
-        let hash2 = PoseidonHasher::hash_two(U256::from(2u64), U256::from(1u64));
-
+        let hash1 = PoseidonHasher::hash_two(
+            Fp::from_u256(U256::from(1u64)),
+            Fp::from_u256(U256::from(2u64)),
+        );
+        let hash2 = PoseidonHasher::hash_two(
+            Fp::from_u256(U256::from(2u64)),
+            Fp::from_u256(U256::from(1u64)),
+        );
         assert_ne!(hash1, hash2);
     }
 
     #[test]
     fn test_hash_zero() {
-        let hash = PoseidonHasher::hash_two(U256::ZERO, U256::ZERO);
-        // Hash of zeros should still produce a valid non-zero output
-        assert_ne!(hash, U256::ZERO);
+        let hash = PoseidonHasher::hash_two(Fp::ZERO, Fp::ZERO);
+        assert_ne!(hash, Fp::ZERO);
     }
 
     #[test]
     fn test_poseidon_circomlib_compatibility() {
         // Test vector from circomlib/poseidon-rs
         // poseidon([1, 2]) = 0x115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a
-        let a = U256::from(1u64);
-        let b = U256::from(2u64);
+        let a = Fp::from_u256(U256::from(1u64));
+        let b = Fp::from_u256(U256::from(2u64));
         let expected = U256::from_str_radix(
             "115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a4417189a",
             16,
@@ -165,7 +149,8 @@ mod tests {
 
         let hash = PoseidonHasher::hash_two(a, b);
         assert_eq!(
-            hash, expected,
+            hash.to_u256(),
+            expected,
             "Poseidon hash does not match circomlib test vector"
         );
     }
