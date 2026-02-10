@@ -29,58 +29,38 @@ const benchmarks: BenchmarkRow[] = [
     stylusGas: 11887,
     solidityGas: 220244,
     savings: "18.5x",
-    source: "OpenZeppelin 2025",
+    source: "OpenZeppelin Poseidon Benchmark (2025)",
   },
   {
     operation: "Merkle Verify (depth 8)",
     stylusGas: 13000,
     solidityGas: 240000,
     savings: "18x",
+    source: "OpenZeppelin Poseidon Benchmark (2025)",
   },
   {
     operation: "Merkle Verify (depth 16)",
     stylusGas: 26000,
     solidityGas: 480000,
     savings: "18x",
+    source: "OpenZeppelin Poseidon Benchmark (2025)",
   },
   {
     operation: "Merkle Verify (depth 32)",
     stylusGas: 52000,
     solidityGas: 960000,
     savings: "18x",
-  },
-  {
-    operation: "Batch Poseidon (10 hashes)",
-    stylusGas: 118870,
-    solidityGas: 2202440,
-    savings: "18.5x",
+    source: "OpenZeppelin Poseidon Benchmark (2025)",
   },
 ];
 
-const projectedFullVerifier: BenchmarkRow[] = [
+const measuredStarkVerifier: BenchmarkRow[] = [
   {
-    operation: "Poseidon hashes (full verifier)",
-    stylusGas: 160000,
-    solidityGas: 3000000,
-    savings: "18x",
-  },
-  {
-    operation: "Field arithmetic",
-    stylusGas: 100000,
-    solidityGas: 1000000,
-    savings: "10x",
-  },
-  {
-    operation: "Merkle paths",
-    stylusGas: 52000,
-    solidityGas: 960000,
-    savings: "18x",
-  },
-  {
-    operation: "Full STARK Verifier (projected)",
-    stylusGas: 312000,
-    solidityGas: 5000000,
-    savings: "~16x",
+    operation: "Full STARK Verifier (fib-8, 4 queries)",
+    stylusGas: 31961858,
+    solidityGas: 0,
+    savings: "-",
+    source: "On-chain measurement (TX: 0x1794...)",
   },
 ];
 
@@ -94,8 +74,8 @@ function calculateSavings(stylusGas: bigint, solidityGas: bigint): string {
 export function BenchmarkTable() {
   const { measurements, getL2Breakdown } = useGas();
 
-  // Get recent measurements grouped by depth
-  const recentByDepth = measurements.reduce((acc, m) => {
+  // Get recent merkle measurements grouped by depth (exclude STARK proofs)
+  const recentByDepth = measurements.filter((m) => m.operation !== "stark" && m.depth > 0).reduce((acc, m) => {
     if (!acc[m.depth]) {
       acc[m.depth] = { stylus: null, solidity: null };
     }
@@ -363,54 +343,43 @@ export function BenchmarkTable() {
           </div>
         </div>
 
-        {/* Projected Full Verifier */}
+        {/* Measured Full STARK Verifier */}
         <div>
           <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-            <Badge variant="secondary">Projected</Badge>
-            Full STARK Verifier
+            <Badge variant="secondary" className="bg-orange-500 text-white">Measured</Badge>
+            Full STARK Verifier (On-Chain)
           </h4>
-          <div className="rounded-lg border overflow-hidden">
+          <div className="rounded-lg border border-orange-500/30 overflow-hidden bg-orange-500/5">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Component</TableHead>
-                  <TableHead className="text-right text-orange-500">Stylus</TableHead>
-                  <TableHead className="text-right text-purple-500">Solidity</TableHead>
-                  <TableHead className="text-right text-green-500">Savings</TableHead>
+                  <TableHead>Operation</TableHead>
+                  <TableHead className="text-right text-orange-500">Stylus Gas</TableHead>
+                  <TableHead className="text-right">Source</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projectedFullVerifier.map((row, i) => (
-                  <TableRow
-                    key={i}
-                    className={
-                      row.operation.includes("Full") ? "bg-muted/50 font-semibold" : ""
-                    }
-                  >
+                {measuredStarkVerifier.map((row, i) => (
+                  <TableRow key={i} className="bg-muted/50 font-semibold">
                     <TableCell className="font-medium">{row.operation}</TableCell>
                     <TableCell className="text-right font-mono text-orange-500">
                       {row.stylusGas.toLocaleString()}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-purple-500">
-                      {row.solidityGas.toLocaleString()}
-                    </TableCell>
                     <TableCell className="text-right">
-                      <Badge
-                        variant={row.operation.includes("Full") ? "default" : "outline"}
-                        className={
-                          row.operation.includes("Full")
-                            ? "bg-green-500"
-                            : "text-green-500 border-green-500"
-                        }
-                      >
-                        {row.savings}
-                      </Badge>
+                      {row.source && (
+                        <span className="text-xs text-muted-foreground">
+                          {row.source}
+                        </span>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Solidity STARK verifier not implemented. No direct gas comparison available.
+          </p>
         </div>
 
         {/* Summary Card */}
@@ -428,8 +397,8 @@ export function BenchmarkTable() {
               </h4>
               <p className="text-sm text-muted-foreground mt-1">
                 {hasLiveData
-                  ? "Based on your actual transaction measurements"
-                  : "Stylus delivers consistent 10-18x improvements for crypto operations"}
+                  ? "Based on your actual Poseidon/Merkle transaction measurements"
+                  : "Poseidon microbenchmark: 18x gas savings (OpenZeppelin 2025)"}
               </p>
             </div>
             <div className="text-4xl font-bold bg-gradient-to-r from-orange-500 to-green-500 bg-clip-text text-transparent">

@@ -22,6 +22,11 @@
     "tailwind-merge": "^3.4.0",
     "thirdweb": "^5.116.1"
   },
+  "pnpm": {
+    "patchedDependencies": {
+      "thirdweb@5.116.1": "patches/thirdweb@5.116.1.patch"
+    }
+  },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",

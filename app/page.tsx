@@ -1,4 +1,5 @@
 import { ConnectWallet } from "@/components/ConnectWallet";
+import { StarkPipeline } from "@/components/StarkPipeline";
 import { VerifyPanel } from "@/components/VerifyPanel";
 import { GasComparison } from "@/components/GasComparison";
 import { BenchmarkTable } from "@/components/BenchmarkTable";
@@ -20,7 +21,7 @@ export default function Home() {
               <div>
                 <h1 className="text-xl font-bold">STARK Stylus Verifier</h1>
                 <p className="text-xs text-muted-foreground">
-                  10-18x Gas Savings on Arbitrum
+                  First On-Chain STARK Verifier on Arbitrum
                 </p>
               </div>
             </div>
@@ -42,14 +43,14 @@ export default function Home() {
               Arbitrum APAC Mini Hackathon 2026
             </Badge>
             <h2 className="text-4xl sm:text-5xl font-bold tracking-tight">
-              STARK Verification,{" "}
+              First On-Chain{" "}
               <span className="bg-gradient-to-r from-orange-500 to-purple-600 bg-clip-text text-transparent">
-                18x Cheaper
+                STARK Verifier
               </span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Poseidon hash and Merkle path verification implemented in Rust for Arbitrum Stylus.
-              Experience the gas savings compared to Solidity in real-time.
+              Generate proofs in-browser, verify on Arbitrum Stylus.
+              Full STARK pipeline with Poseidon hash, Merkle commitments, and FRI protocol.
             </p>
             <div className="flex items-center justify-center gap-4 pt-4">
               <div className="flex items-center gap-2 text-sm">
@@ -62,26 +63,38 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span>18x Savings</span>
+                <span>31.9M Gas Verified</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Main Content */}
+      {/* STARK Pipeline - Main Feature */}
       <section className="container mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div className="space-y-6">
-            <VerifyPanel />
-            <GasComparison />
-          </div>
+        <div className="max-w-3xl mx-auto">
+          <StarkPipeline />
+        </div>
+      </section>
 
-          {/* Right Column */}
-          <div className="space-y-6">
-            <BenchmarkTable />
-            <L2ComputationChart />
+      {/* Poseidon/Merkle Benchmark Section */}
+      <section className="border-t">
+        <div className="container mx-auto px-4 py-8">
+          <h3 className="text-2xl font-bold text-center mb-6">
+            Poseidon / Merkle Benchmark
+          </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column */}
+            <div className="space-y-6">
+              <VerifyPanel />
+              <GasComparison />
+            </div>
+
+            {/* Right Column */}
+            <div className="space-y-6">
+              <BenchmarkTable />
+              <L2ComputationChart />
+            </div>
           </div>
         </div>
       </section>
@@ -136,6 +149,7 @@ export default function Home() {
               "Next.js 16",
               "thirdweb v5",
               "Poseidon BN254",
+              "FRI Protocol",
               "Foundry",
               "shadcn/ui",
             ].map((tech) => (

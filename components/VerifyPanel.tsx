@@ -127,6 +127,7 @@ export function VerifyPanel() {
       // Add to gas context for charts
       addMeasurement({
         type,
+        operation: "merkle",
         depth,
         gasUsed,
         l1DataGas,

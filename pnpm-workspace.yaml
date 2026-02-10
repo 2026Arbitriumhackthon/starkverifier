@@ -1,5 +1,9 @@
 packages:
   - .
+
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+patchedDependencies:
+  thirdweb@5.116.1: patches/thirdweb@5.116.1.patch
