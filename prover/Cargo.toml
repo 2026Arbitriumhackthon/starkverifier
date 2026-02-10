@@ -5,11 +5,29 @@ edition = "2021"
 license = "MIT"
 description = "Off-chain STARK prover for Fibonacci computation (generates proofs for on-chain verification)"
 
+[lib]
+name = "stark_prover"
+path = "src/lib.rs"
+
+[[bin]]
+name = "stark-prover"
+path = "src/main.rs"
+
+[features]
+default = ["cli"]
+cli = ["clap"]
+wasm = ["wasm-bindgen", "js-sys", "getrandom"]
+
 [dependencies]
 # Share field arithmetic and Poseidon with the on-chain verifier
-alloy-primitives = { version = "0.8", default-features = false, features = ["std"] }
+alloy-primitives = { version = "0.8", default-features = false }
 ruint = "=1.12.3"
 hex = "0.4.3"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-clap = { version = "4", features = ["derive"] }
+
+# CLI-only dependencies
+clap = { version = "4", features = ["derive"], optional = true }
+
+# WASM-only dependencies
+wasm-bindgen = { version = "0.2", optional = true }
+js-sys = { version = "0.3", optional = true }
+getrandom = { version = "0.2", features = ["js"], optional = true }

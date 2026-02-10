@@ -4,15 +4,21 @@ import { arbitrumSepolia } from "./chains";
 
 /**
  * Contract addresses on Arbitrum Sepolia
- * Update these after deployment
  */
+
+// STARK Verifier (with security checks: Merkle + cross-layer + index verification)
+export const STARK_VERIFIER_ADDRESS =
+  "0x572318f371e654d8f3b18209b9b6ae766326ef46" as const;
+
+// Poseidon/Merkle benchmark contract (old, poseidon+merkle only)
 export const STYLUS_VERIFIER_ADDRESS =
   "0x327c65e04215bd5575d60b00ba250ed5dd25a4fc" as const;
+
 export const SOLIDITY_VERIFIER_ADDRESS =
   "0x96326E368b6f2fdA258452ac42B1aC013238f5Ce" as const;
 
 /**
- * Verifier contract ABI
+ * Verifier contract ABI (Poseidon/Merkle benchmark)
  * Shared interface for both Stylus and Solidity implementations
  */
 export const VERIFIER_ABI = [
@@ -88,7 +94,41 @@ export const VERIFIER_ABI = [
 ] as const;
 
 /**
- * Get Stylus verifier contract instance
+ * STARK Verifier ABI (full STARK proof verification)
+ */
+export const STARK_VERIFIER_ABI = [
+  {
+    type: "function",
+    name: "verifyStarkProof",
+    inputs: [
+      { name: "publicInputs", type: "uint256[]" },
+      { name: "commitments", type: "uint256[]" },
+      { name: "oodValues", type: "uint256[]" },
+      { name: "friFinalPoly", type: "uint256[]" },
+      { name: "queryValues", type: "uint256[]" },
+      { name: "queryPaths", type: "uint256[]" },
+      { name: "queryMetadata", type: "uint256[]" },
+    ],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
+] as const;
+
+/**
+ * TypeScript type for a serialized STARK proof (from prover WASM)
+ */
+export interface StarkProofJSON {
+  publicInputs: string[];
+  commitments: string[];
+  oodValues: string[];
+  friFinalPoly: string[];
+  queryValues: string[];
+  queryPaths: string[];
+  queryMetadata: string[];
+}
+
+/**
+ * Get Stylus verifier contract instance (Poseidon/Merkle benchmark)
  */
 export const getStylusContract = () =>
   getContract({
@@ -107,6 +147,17 @@ export const getSolidityContract = () =>
     chain: arbitrumSepolia,
     address: SOLIDITY_VERIFIER_ADDRESS,
     abi: VERIFIER_ABI,
+  });
+
+/**
+ * Get STARK verifier contract instance
+ */
+export const getStarkVerifierContract = () =>
+  getContract({
+    client,
+    chain: arbitrumSepolia,
+    address: STARK_VERIFIER_ADDRESS,
+    abi: STARK_VERIFIER_ABI,
   });
 
 /**

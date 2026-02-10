@@ -4,12 +4,18 @@ import { createContext, useContext, useState, useCallback, ReactNode } from "rea
 
 export interface GasMeasurement {
   type: "stylus" | "solidity";
+  operation: "merkle" | "stark";
   depth: number;
   gasUsed: bigint;
   l1DataGas?: bigint;
   l2Computation?: bigint;
   txHash: string;
   timestamp: number;
+  starkParams?: {
+    fibN: number;
+    numQueries: number;
+    numFriLayers: number;
+  };
 }
 
 export interface L2BreakdownResult {

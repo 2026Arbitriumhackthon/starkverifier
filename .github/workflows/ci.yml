@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  frontend:
+    name: Frontend (Next.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm build
+        env:
+          NEXT_PUBLIC_THIRDWEB_CLIENT_ID: ${{ secrets.NEXT_PUBLIC_THIRDWEB_CLIENT_ID }}
+
+  stylus:
+    name: Stylus Contract (Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts/stylus
+      - name: Run tests
+        working-directory: contracts/stylus
+        run: cargo test --features export-abi
+      - name: Build WASM
+        working-directory: contracts/stylus
+        run: cargo build --release --target wasm32-unknown-unknown
+
+  solidity:
+    name: Solidity Contract (Foundry)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+      - name: Build
+        working-directory: contracts/solidity
+        run: forge build
+      - name: Test
+        working-directory: contracts/solidity
+        run: forge test -vvv
+
+  prover-native:
+    name: Prover (Native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: prover
+      - name: Run tests
+        working-directory: prover
+        run: cargo test
+      - name: Build release
+        working-directory: prover
+        run: cargo build --release
+
+  prover-wasm:
+    name: Prover (WASM)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.85.0"
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: prover
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: Build WASM
+        working-directory: prover
+        run: wasm-pack build --target web --features wasm --no-default-features

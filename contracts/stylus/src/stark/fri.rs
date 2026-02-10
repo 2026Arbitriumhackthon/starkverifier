@@ -18,6 +18,15 @@ use crate::merkle::MerkleVerifier;
 use super::channel::Channel;
 use super::domain;
 
+/// Precomputed inverse of 2 in BN254 scalar field: (p+1)/2.
+/// This avoids expensive modular inversion in every FRI fold.
+const INV_TWO: U256 = U256::from_limbs([
+    0xa1f0fac9f8000001,
+    0x9419f4243cdcb848,
+    0xdc2822db40c0ac2e,
+    0x183227397098d014,
+]);
+
 /// Parameters for the FRI protocol
 pub struct FriParams {
     /// Log2 of the initial domain size (LDE domain)
@@ -62,16 +71,14 @@ impl FriParams {
 /// * `alpha` - Folding challenge from Fiat-Shamir
 /// * `x` - The domain point (x value)
 pub fn fri_fold(fx: U256, f_neg_x: U256, alpha: U256, x: U256) -> U256 {
-    let two = U256::from(2u64);
-
-    // Even part: (f(x) + f(-x)) / 2
+    // Even part: (f(x) + f(-x)) * inv(2)
     let sum = BN254Field::add(fx, f_neg_x);
-    let even = BN254Field::div(sum, two);
+    let even = BN254Field::mul(sum, INV_TWO);
 
-    // Odd part: (f(x) - f(-x)) / (2 * x)
+    // Odd part: (f(x) - f(-x)) * inv(2) / x  (= (f(x) - f(-x)) / (2*x))
     let diff = BN254Field::sub(fx, f_neg_x);
-    let two_x = BN254Field::mul(two, x);
-    let odd = BN254Field::div(diff, two_x);
+    let half_diff = BN254Field::mul(diff, INV_TWO);
+    let odd = BN254Field::div(half_diff, x);
 
     // Result: even + alpha * odd
     let alpha_odd = BN254Field::mul(alpha, odd);
@@ -162,6 +169,16 @@ pub fn verify_fri(
         path_elements_per_query += (params.log_domain_size - layer as u32) as usize;
     }
 
+    // Pre-compute domain generators for each layer + final domain
+    // This avoids repeated exponentiation inside the query loop
+    let mut layer_generators = [U256::ZERO; 32]; // Max 32 layers
+    for layer in 0..num_layers {
+        let layer_log_domain = params.log_domain_size - layer as u32;
+        layer_generators[layer] = domain::domain_generator(layer_log_domain);
+    }
+    let final_log_domain = params.log_domain_size - num_layers as u32;
+    let final_gen = domain::domain_generator(final_log_domain);
+
     // Step 3: For each query, verify Merkle paths + folding consistency
     let values_per_query = num_layers * 2; // [f(x), f(-x)] per layer
 
@@ -207,9 +224,8 @@ pub fn verify_fri(
             path_cursor += depth;
 
             // --- Cross-layer folding consistency ---
-            // Compute the domain point x
-            let layer_gen = domain::domain_generator(layer_log_domain);
-            let x = domain::evaluate_at(layer_gen, query_idx as u64);
+            // Compute the domain point x using precomputed generator
+            let x = domain::evaluate_at(layer_generators[layer], query_idx as u64);
             let folded = fri_fold(fx, f_neg_x, alphas[layer], x);
 
             if layer < num_layers - 1 {
@@ -227,8 +243,6 @@ pub fn verify_fri(
         }
 
         // Verify final polynomial evaluation matches last folded value
-        let final_log_domain = params.log_domain_size - num_layers as u32;
-        let final_gen = domain::domain_generator(final_log_domain);
         let final_x = domain::evaluate_at(final_gen, query_idx as u64);
         let expected = evaluate_polynomial(final_poly_coeffs, final_x);
 
@@ -243,6 +257,14 @@ pub fn verify_fri(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_inv_two_constant() {
+        // INV_TWO * 2 should equal 1 (mod p)
+        let two = U256::from(2u64);
+        let result = BN254Field::mul(INV_TWO, two);
+        assert_eq!(result, U256::from(1u64), "INV_TWO * 2 != 1");
+    }
 
     #[test]
     fn test_fri_fold_even_function() {

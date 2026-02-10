@@ -1,0 +1,21 @@
+diff --git a/dist/esm/wallets/wallet-connect/controller.js b/dist/esm/wallets/wallet-connect/controller.js
+index 4df54ba2ade2a9c47947b96d1467f97aaa6ce355..c5e75666d428313591d2ad5a976314483af27f4c 100644
+--- a/dist/esm/wallets/wallet-connect/controller.js
++++ b/dist/esm/wallets/wallet-connect/controller.js
+@@ -316,6 +316,16 @@ function createAccount({ provider, address, client, chain, sessionRequestHandler
+                             gas: tx.gas ? numberToHex(tx.gas) : undefined,
+                             to: tx.to,
+                             value: tx.value ? numberToHex(tx.value) : undefined,
++                            ...(tx.gasPrice
++                                ? { gasPrice: numberToHex(tx.gasPrice) }
++                                : {
++                                    maxFeePerGas: tx.maxFeePerGas
++                                        ? numberToHex(tx.maxFeePerGas)
++                                        : undefined,
++                                    maxPriorityFeePerGas: tx.maxPriorityFeePerGas
++                                        ? numberToHex(tx.maxPriorityFeePerGas)
++                                        : undefined,
++                                }),
+                         },
+                     ],
+                 },
