@@ -9,10 +9,12 @@ use alloc::vec;
 use alloc::vec::Vec;
 use stylus_sdk::{alloy_primitives::U256, prelude::*};
 
+pub mod field;
 pub mod merkle;
 pub mod poseidon;
 pub mod stark;
 
+use field::Fp;
 use poseidon::PoseidonHasher;
 
 sol_storage! {
@@ -25,7 +27,7 @@ sol_storage! {
 impl StarkVerifier {
     /// Compute Poseidon hash of two U256 inputs
     pub fn poseidon_hash(&self, a: U256, b: U256) -> U256 {
-        PoseidonHasher::hash_two(a, b)
+        PoseidonHasher::hash_two(Fp::from_u256(a), Fp::from_u256(b)).to_u256()
     }
 
     /// Verify a full STARK proof of Fibonacci computation.
