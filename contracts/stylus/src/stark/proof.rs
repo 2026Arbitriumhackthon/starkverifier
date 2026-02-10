@@ -54,6 +54,11 @@ pub fn parse_stark_proof(
         return None;
     }
 
+    // FRI verifier uses fixed-size arrays: alphas[32] and derived_indices[64]
+    if num_queries == 0 || num_queries > 64 {
+        return None;
+    }
+
     if query_metadata.len() < 3 + num_queries {
         return None;
     }

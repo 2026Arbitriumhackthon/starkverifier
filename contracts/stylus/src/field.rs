@@ -113,7 +113,7 @@ impl Fp {
     /// Modular negation: -a mod p
     #[inline(always)]
     pub fn neg(a: Fp) -> Fp {
-        if a.0[0] | a.0[1] | a.0[2] | a.0[3] == 0 {
+        if (a.0[0] | a.0[1] | a.0[2] | a.0[3]) == 0 {
             return Fp::ZERO;
         }
         let (d0, borrow) = sbb(MODULUS[0], a.0[0], 0);
@@ -151,6 +151,7 @@ impl Fp {
     /// Modular inverse: a^(p-2) mod p  (Fermat's little theorem)
     #[inline]
     pub fn inv(a: Fp) -> Fp {
+        debug_assert!(a != Fp::ZERO, "Fp::inv called with zero");
         if a == Fp::ZERO {
             return Fp::ZERO;
         }
@@ -172,7 +173,7 @@ impl Fp {
     /// Check if value is zero
     #[inline(always)]
     pub fn is_zero(self) -> bool {
-        self.0[0] | self.0[1] | self.0[2] | self.0[3] == 0
+        (self.0[0] | self.0[1] | self.0[2] | self.0[3]) == 0
     }
 }
 

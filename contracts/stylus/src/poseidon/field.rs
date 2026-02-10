@@ -137,8 +137,9 @@ mod tests {
     }
 
     #[test]
-    fn test_inv_zero() {
-        assert_eq!(BN254Field::inv(Fp::ZERO), Fp::ZERO);
+    #[should_panic(expected = "Fp::inv called with zero")]
+    fn test_inv_zero_panics_in_debug() {
+        let _ = BN254Field::inv(Fp::ZERO);
     }
 
     #[test]
