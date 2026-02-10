@@ -47,3 +47,4 @@ contracts/solidity/out/
 
 # Rust/Stylus build artifacts
 contracts/stylus/target/
+prover/target/

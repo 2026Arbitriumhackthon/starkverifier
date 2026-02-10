@@ -8,8 +8,8 @@
 
 use alloy_primitives::U256;
 
-mod constants;
-mod field;
+pub mod constants;
+pub mod field;
 
 use constants::{MDS_MATRIX, ROUND_CONSTANTS};
 use field::BN254Field;

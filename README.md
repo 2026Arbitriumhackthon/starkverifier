@@ -8,9 +8,9 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org/)
 [![circomlib](https://img.shields.io/badge/Poseidon-circomlib%20Compatible-green.svg)](https://github.com/iden3/circomlib)
 
-> **Mini STARK Verifier demonstrating ~2.1x gas savings on Arbitrum Stylus (Rust/WASM) compared to Solidity**
+> **Full STARK Verifier on Arbitrum Stylus (Rust/WASM) — direct on-chain verification without SNARK wrapping**
 
-Built for **Arbitrum APAC Mini Hackathon 2026**
+Built for **Arbitrum Buildathon 2026** | Evolved from APAC Mini Hackathon 1st place (Poseidon/Merkle ~2.1x gas benchmark)
 
 ---
 
@@ -29,6 +29,7 @@ Built for **Arbitrum APAC Mini Hackathon 2026**
   - [Poseidon Hash Function](#poseidon-hash-function)
   - [Merkle Verification](#merkle-verification)
 - [Why Stylus is Faster](#why-stylus-is-faster)
+- [STARK Verification Gas](#stark-verification-gas)
 - [Security](#security)
 - [API Reference](#api-reference)
 - [Supported Wallets](#supported-wallets)
@@ -40,14 +41,15 @@ Built for **Arbitrum APAC Mini Hackathon 2026**
 
 ## Features
 
+- **Full STARK Verification On-Chain** - Complete STARK proof verification for Fibonacci computation, running natively on Stylus WASM
 - **No Wrapping Tax** - Direct STARK verification without SNARK wrapping overhead
-- **~2.1x Gas Savings** - Merkle path verification using Stylus vs Solidity
+- **~2.1x Gas Savings** - Poseidon/Merkle benchmarks: Stylus vs Solidity
 - **Post-Quantum Ready** - Hash-based STARK security, no trusted setup required
+- **Off-Chain Prover** - Rust CLI prover generates STARK proofs for on-chain verification
+- **Zero External Dependencies** - All cryptography (Poseidon, FRI, AIR) self-implemented within 24KB WASM limit
 - **circomlib Compatible** - Poseidon hash function compatible with iden3/circomlib
-- **Merkle Proof Verification** - Variable depth support (8, 16, 32)
-- **Live on Arbitrum Sepolia** - Both contracts deployed and verifiable
-- **Modern Web3 Stack** - Next.js 16 + React 19 + thirdweb v5
-- **Multi-wallet Support** - MetaMask, Coinbase, Rabby, WalletConnect
+- **Security Audited** - FRI Merkle verification, cross-layer consistency, and Fiat-Shamir index derivation all validated
+- **Live on Arbitrum Sepolia** - STARK verifier deployed and [verified on-chain](https://sepolia.arbiscan.io/tx/0x1794ff88663a73b50614533d28caa13bc82cd799374d69dbddb03febae32a9a8) (31.9M gas)
 
 ---
 
@@ -88,28 +90,33 @@ Standard ZK rollups wrap **STARK proofs inside SNARKs** (e.g., Groth16) to reduc
 
 > **"We've been forced to sacrifice security (trustless setup) and future-proofing (post-quantum resistance) just because EVM gas was too expensive. Stylus changes everything."**
 
-### 📊 Head-to-Head Comparison
+### 📊 Head-to-Head: Total Cost of Verification
 
-| Metric | Traditional (Wrapped STARK) | Our Approach (Pure STARK on Stylus) | Improvement |
-|--------|----------------------------|-------------------------------------|-------------|
-| **On-chain Gas** | Low (EVM optimized) | **Very Low** (Stylus optimized) | **2.1x savings** |
-| **Proving Time** | Slow (2-step proof) | **Fast** (1-step proof) | **~40% faster** ⚡ |
-| **Trust Model** | Trusted Setup required | **Transparent** (trustless) | **No ceremony needed** |
-| **Quantum Safety** | Vulnerable (Groth16) | **Post-quantum resistant** | **Future-proof** |
-| **Code Complexity** | High (wrapper circuit) | **Low** (direct verification) | **Easier audits** |
+The "Wrapping Tax" isn't just on-chain gas — it's the **full cost of running a SNARK wrapper pipeline**: GPU servers, trusted setup ceremonies, wrapper circuit maintenance, and proving time.
+
+| Metric | Traditional (STARK→SNARK wrap) | Our Approach (Pure STARK on Stylus) |
+|--------|-------------------------------|-------------------------------------|
+| **Off-chain Proving** | STARK + SNARK wrapping (GPU, $2-5/proof) | STARK only (CPU, <$1/proof) |
+| **On-chain Gas** | ~230K (Groth16 precompile) | ~32M (fib-8) — higher |
+| **Trust Model** | Trusted Setup required | **Transparent** (trustless) |
+| **Quantum Safety** | Vulnerable (Groth16) | **Post-quantum resistant** |
+| **Infrastructure** | High-RAM GPU servers | Standard servers |
+| **Dev Complexity** | Wrapper circuit maintenance | Direct verification logic |
 
 ### The Bottom Line
 
-With Stylus's **2.1x lower gas costs**, we can now verify **raw STARK proofs directly on-chain**. By removing the wrapping step:
+On-chain gas alone favors Groth16 (~230K vs ~32M). But gas is only part of the cost:
 
-- **Proving time reduced by ~40%** - No second-stage SNARK generation
-- **No trusted setup ceremony** - Pure mathematics, no security assumptions
-- **Lower infrastructure costs** - No high-RAM servers for wrapping circuits
-- **Simpler maintenance** - Change logic without updating wrapper circuits
+- **No trusted setup ceremony** — Pure mathematics, no security assumptions
+- **No GPU infrastructure** — Standard CPU servers generate proofs
+- **No wrapper circuit maintenance** — Change logic without updating Groth16 circuits
+- **Post-quantum resistant** — Hash-based security, no elliptic curve assumptions
 
-> **Key Insight**: This isn't just about saving gas. It's about **removing a fundamental architectural compromise** that the entire ZK ecosystem has been forced to accept.
+The real value is **architectural simplicity**: one proof system, no wrapping pipeline, no trusted setup, and a direct path to post-quantum security.
+
+> **Key Insight**: We trade higher on-chain gas for **eliminating the entire off-chain wrapping pipeline**. As Stylus precompiles mature and L2 gas costs drop, the on-chain gap will narrow — but the architectural advantages are permanent.
 >
-> **Final Slogan: "Gas costs halved, proving time 40% faster."**
+> **"No trusted setup, no GPU servers, no wrapper circuits."**
 
 ---
 
@@ -132,6 +139,49 @@ Real transaction measurements on Arbitrum Sepolia testnet:
 
 > **Note**: The consistent ~2.1x ratio across all depths confirms that Stylus maintains its efficiency advantage regardless of workload size.
 
+### STARK Verification Gas
+
+Real on-chain STARK proof verification on Arbitrum Sepolia ([tx](https://sepolia.arbiscan.io/tx/0x1794ff88663a73b50614533d28caa13bc82cd799374d69dbddb03febae32a9a8)):
+
+| Metric | Value |
+|--------|-------|
+| **Proof** | fib(8), 4 FRI queries, 3 FRI layers |
+| **Gas Used** | **31,961,858** |
+| **Calldata** | ~3.4 KB (96 U256 elements) |
+| **Result** | `true` (valid proof) |
+| **ETH Cost** | 0.00064 ETH @ 0.02 Gwei |
+
+#### Gas Breakdown by Verification Phase
+
+| Phase | Description | Dominant Cost |
+|-------|-------------|---------------|
+| Fiat-Shamir channel | Poseidon hashing of commitments | ~5% |
+| AIR constraint check | Transition + boundary quotients | ~10% |
+| Composition polynomial | 5 coefficient multiplications | ~5% |
+| **FRI verification** | **Merkle path verification + folding** | **~80%** |
+
+> The FRI phase dominates gas cost because each query requires multiple Poseidon hashes for Merkle path verification (depth 5+4+3=12 hashes per query).
+
+#### Production Scaling
+
+| Parameter | Current (Demo) | Production (Target) |
+|-----------|:-:|:-:|
+| FRI queries | 4 | 20+ |
+| Security bits | ~16 | ~80 |
+| Gas (single TX) | 31.9M | ~200M (exceeds 32M limit) |
+| Solution | Single TX | Multi-TX split verification |
+
+Production-grade proofs (20+ queries for ~80-bit security) exceed the single-transaction gas limit. The solution is **split verification**: FRI queries are independent and can be verified across multiple transactions (~8 TXs of ~25M gas each). Each transaction verifies a subset of queries and stores intermediate results; a final transaction aggregates them.
+
+#### On-chain Gas: STARK vs Groth16
+
+| Approach | On-chain Gas | Off-chain Cost | Trust Model |
+|----------|:-:|:-:|:-:|
+| **Groth16 (SNARK)** | ~230K | $2-5/proof (GPU) | Trusted Setup |
+| **Our STARK (Stylus)** | ~32M | <$1/proof (CPU) | Transparent |
+
+Raw STARK verification costs ~140x more on-chain gas than Groth16. This is an inherent trade-off: STARKs exchange compact proofs for transparency and post-quantum security. As Arbitrum adds Poseidon precompiles or Stylus-native hash acceleration, this gap will shrink significantly.
+
 ### 🚀 Impact on Scalability
 
 **Why L2?** Heavy ZK verification on Ethereum Mainnet would consume entire blocks. By offloading to Arbitrum Stylus, we free up valuable L1 block space while inheriting Ethereum's security.
@@ -151,30 +201,43 @@ At Depth 32, Solidity consumes **17.32M gas (54% of block limit)**, causing pote
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Frontend                                 │
-│        Next.js 16 + React 19 + TypeScript + thirdweb v5         │
+│                    Off-Chain Prover (Rust CLI)                    │
 │                                                                  │
-│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌────────────┐ │
-│  │VerifyPanel  │ │GasComparison│ │BenchmarkTbl │ │L2Chart     │ │
-│  └─────────────┘ └─────────────┘ └─────────────┘ └────────────┘ │
-├─────────────────────────────────────────────────────────────────┤
-│                    Arbitrum Sepolia (L2)                         │
+│  1. Generate Fibonacci trace (N steps)                           │
+│  2. Evaluate trace on LDE domain (4x blowup)                    │
+│  3. Commit via Poseidon Merkle trees                             │
+│  4. Fiat-Shamir: draw OOD point z, composition alphas            │
+│  5. Compute composition polynomial on LDE                        │
+│  6. Run FRI protocol (fold + commit each layer)                  │
+│  7. Serialize proof → ABI-encoded calldata (~3.4 KB)             │
+│                                                                  │
+│  cargo run --release -- --fib-n 64 --num-queries 20              │
+└───────────────────────────────┬─────────────────────────────────┘
+                                │ STARK Proof (calldata)
+                                ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Arbitrum Sepolia (L2)                          │
 │                      Chain ID: 421614                            │
 ├────────────────────────────┬────────────────────────────────────┤
-│     Stylus Verifier        │       Solidity Verifier            │
-│     (Rust → WASM)          │       (Solidity → EVM)             │
+│     STARK Verifier         │       Solidity Verifier            │
+│     (Rust → WASM, 23.6KB)  │       (Solidity → EVM)            │
 │                            │                                     │
-│  ┌──────────────────┐      │    ┌──────────────────┐            │
-│  │ poseidon_hash()  │      │    │ poseidonHash()   │            │
-│  │ verify_merkle()  │      │    │ verifyMerkle()   │            │
-│  │ batch_poseidon() │      │    │ batchPoseidon()  │            │
-│  └──────────────────┘      │    └──────────────────┘            │
+│  ┌──────────────────────┐  │    ┌──────────────────┐            │
+│  │ verify_stark_proof() │  │    │ poseidonHash()   │            │
+│  │ poseidon_hash()      │  │    │ batchPoseidon()  │            │
+│  └──────────────────────┘  │    │ verifyMerkle()   │            │
+│                            │    └──────────────────┘            │
+│  Verification Pipeline:    │                                     │
+│  1. Fiat-Shamir channel    │    0x96326E36...                   │
+│  2. AIR constraint check   │                                     │
+│  3. Composition polynomial │                                     │
+│  4. FRI low-degree test    │                                     │
 │                            │                                     │
-│  0x327c65e0...             │    0x96326E36...                   │
+│  0x572318f3...             │                                     │
 ├────────────────────────────┴────────────────────────────────────┤
-│                  Poseidon BN254 (t=3)                            │
-│            8 Full Rounds + 57 Partial Rounds                     │
-│                 circomlib Compatible                             │
+│             Shared Primitives: Poseidon BN254 (t=3)              │
+│           8 Full Rounds + 57 Partial Rounds (circomlib)          │
+│          Field Arithmetic: pow, inv, div over BN254              │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -219,59 +282,53 @@ At Depth 32, Solidity consumes **17.32M gas (54% of block limit)**, causing pote
 
 ```
 starkverifier/
-├── app/                          # Next.js App Router
-│   ├── layout.tsx               # Root layout with providers
-│   ├── page.tsx                 # Main dashboard page
-│   ├── providers.tsx            # thirdweb + Gas context
-│   └── globals.css              # Tailwind styles
-│
-├── components/
-│   ├── ui/                      # shadcn/ui components
-│   │   ├── button.tsx
-│   │   ├── card.tsx
-│   │   ├── badge.tsx
-│   │   ├── tabs.tsx
-│   │   ├── table.tsx
-│   │   └── chart.tsx
-│   ├── ConnectWallet.tsx        # Wallet connection button
-│   ├── VerifyPanel.tsx          # Main verification UI
-│   ├── GasComparison.tsx        # Bar chart visualization
-│   ├── BenchmarkTable.tsx       # Detailed benchmark data
-│   └── L2ComputationChart.tsx   # L2 computation comparison
-│
-├── lib/
-│   ├── client.ts                # thirdweb client setup
-│   ├── chains.ts                # Arbitrum Sepolia config
-│   ├── contracts.ts             # Contract addresses & ABI
-│   ├── gas-utils.ts             # Gas calculation utilities
-│   ├── gas-context.tsx          # React context for gas state
-│   └── utils.ts                 # Tailwind merge utility
-│
 ├── contracts/
-│   ├── stylus/                  # Rust/WASM implementation
+│   ├── stylus/                  # On-chain STARK Verifier (Rust → WASM)
 │   │   ├── src/
-│   │   │   ├── lib.rs          # Contract entry point
+│   │   │   ├── lib.rs          # Contract entry point (poseidon_hash, verify_stark_proof)
 │   │   │   ├── poseidon/
-│   │   │   │   ├── mod.rs      # Poseidon hash implementation
-│   │   │   │   ├── constants.rs # 195 round constants
-│   │   │   │   └── field.rs    # BN254 field arithmetic
-│   │   │   └── merkle.rs       # Merkle verification logic
-│   │   └── Cargo.toml          # Rust dependencies
+│   │   │   │   ├── mod.rs      # Poseidon hash (BN254, circomlib compatible)
+│   │   │   │   ├── constants.rs # 195 round constants (symlinked to prover)
+│   │   │   │   └── field.rs    # BN254 field: add, sub, mul, pow, inv, div
+│   │   │   ├── merkle.rs       # Merkle tree verification
+│   │   │   └── stark/          # STARK verification pipeline
+│   │   │       ├── mod.rs      # Full verifier orchestration
+│   │   │       ├── air.rs      # Fibonacci AIR constraints
+│   │   │       ├── channel.rs  # Fiat-Shamir (Poseidon-based)
+│   │   │       ├── domain.rs   # Evaluation domains (roots of unity)
+│   │   │       ├── fri.rs      # FRI low-degree verifier
+│   │   │       └── proof.rs    # Proof deserialization
+│   │   ├── Cargo.toml
+│   │   ├── Stylus.toml         # cargo-stylus 0.10 config
+│   │   └── rust-toolchain.toml # Rust 1.85.0
 │   │
-│   └── solidity/                # EVM implementation
+│   └── solidity/                # Solidity baseline for gas comparison
 │       ├── src/
-│       │   ├── StarkVerifier.sol # Main contract
-│       │   └── Poseidon.sol      # Poseidon library
-│       ├── script/
-│       │   └── Deploy.s.sol      # Deployment script
-│       ├── test/
-│       │   └── Poseidon.t.sol    # Unit tests
-│       └── foundry.toml          # Foundry config
+│       │   ├── StarkVerifier.sol
+│       │   └── Poseidon.sol
+│       └── foundry.toml
 │
-├── package.json
-├── tsconfig.json
-├── tailwind.config.ts
-└── next.config.ts
+├── prover/                      # Off-chain STARK Prover (Rust CLI)
+│   ├── src/
+│   │   ├── main.rs             # CLI: --fib-n N --num-queries Q
+│   │   ├── trace.rs            # Fibonacci trace generation
+│   │   ├── commit.rs           # Poseidon Merkle tree construction
+│   │   ├── compose.rs          # Composition polynomial on LDE
+│   │   ├── fri.rs              # FRI prover (fold + commit layers)
+│   │   ├── channel.rs          # Fiat-Shamir (matches on-chain)
+│   │   ├── domain.rs           # Evaluation domains + inverse NTT
+│   │   ├── proof.rs            # Proof → JSON / ABI serialization
+│   │   ├── field.rs            # BN254 field arithmetic
+│   │   └── poseidon.rs         # Poseidon hash (shared constants)
+│   └── Cargo.toml
+│
+├── app/                         # Next.js 16 Frontend
+│   ├── layout.tsx
+│   ├── page.tsx
+│   └── providers.tsx
+├── components/                  # React components
+├── lib/                         # Contracts, gas utils, chains
+└── package.json
 ```
 
 ---
@@ -362,15 +419,19 @@ forge script script/Deploy.s.sol:DeployScript \
 
 ## Deployed Contracts
 
-| Contract | Address | Network |
-|----------|---------|---------|
-| **Stylus Verifier** | [`0x327c65e04215bd5575d60b00ba250ed5dd25a4fc`](https://sepolia.arbiscan.io/address/0x327c65e04215bd5575d60b00ba250ed5dd25a4fc) | Arbitrum Sepolia |
-| **Solidity Verifier** | [`0x96326E368b6f2fdA258452ac42B1aC013238f5Ce`](https://sepolia.arbiscan.io/address/0x96326E368b6f2fdA258452ac42B1aC013238f5Ce) | Arbitrum Sepolia |
+| Contract | Address | Network | Purpose |
+|----------|---------|---------|---------|
+| **STARK Verifier (Stylus, audited)** | [`0x572318f371e654d8f3b18209b9b6ae766326ef46`](https://sepolia.arbiscan.io/address/0x572318f371e654d8f3b18209b9b6ae766326ef46) | Arbitrum Sepolia | Full STARK proof verification (security-fixed) |
+| STARK Verifier (Stylus, pre-audit) | [`0x252b0c1d4959c19154f174912cbf478b6d81d9d0`](https://sepolia.arbiscan.io/address/0x252b0c1d4959c19154f174912cbf478b6d81d9d0) | Arbitrum Sepolia | Pre-audit version (missing FRI security checks) |
+| Poseidon/Merkle (Stylus) | [`0x327c65e04215bd5575d60b00ba250ed5dd25a4fc`](https://sepolia.arbiscan.io/address/0x327c65e04215bd5575d60b00ba250ed5dd25a4fc) | Arbitrum Sepolia | Gas benchmark baseline |
+| **Solidity Verifier** | [`0x96326E368b6f2fdA258452ac42B1aC013238f5Ce`](https://sepolia.arbiscan.io/address/0x96326E368b6f2fdA258452ac42B1aC013238f5Ce) | Arbitrum Sepolia | Solidity gas comparison |
 
 **Network Details:**
 - Chain ID: `421614`
 - RPC: `https://sepolia-rollup.arbitrum.io/rpc`
 - Explorer: [Arbiscan Sepolia](https://sepolia.arbiscan.io)
+
+**WASM Binary:** 23.6 KB compressed (under Stylus 24KB limit)
 
 ---
 
@@ -474,6 +535,57 @@ Computation:
 | 16 | 65,536 | 16 | Medium datasets |
 | 32 | 4.3B | 32 | Large-scale applications |
 
+### STARK Verification
+
+The on-chain verifier validates STARK proofs for Fibonacci computation over the BN254 scalar field.
+
+#### Verification Pipeline
+
+```
+verify_stark_proof(public_inputs, commitments, ood_values, fri_final_poly,
+                   query_values, query_paths, query_metadata) → bool
+
+1. Parse proof from ABI-compatible parameters (with input validation)
+2. Initialize Fiat-Shamir channel (Poseidon-based) with public inputs
+3. Commit trace Merkle root, draw OOD point z
+4. Verify AIR constraints at z:
+   - Transition: a_next == b, b_next == a + b
+   - Boundary: a[0]==1, b[0]==1, b[N-1]==claimed_result
+5. Compose constraint quotients with random coefficients
+6. Verify composition polynomial matches prover's claim
+7. Verify composition commitment == FRI layer 0 commitment
+8. Run FRI verification:
+   a. Draw folding challenges from Fiat-Shamir channel
+   b. Independently derive query indices from channel (prevent index manipulation)
+   c. For each query, for each layer: verify Merkle path for f(x)
+   d. Verify cross-layer folding consistency (folded value == next layer's f(x))
+   e. Final polynomial evaluation check
+```
+
+#### Proof Format
+
+| Parameter | Size (fib-8, 4 queries) | Description |
+|-----------|-------------------------|-------------|
+| `public_inputs` | 3 U256 | [a[0], b[0], claimed_result] |
+| `commitments` | 5 U256 | trace_root + comp_root + FRI layer roots |
+| `ood_values` | 5 U256 | Trace + composition at OOD point |
+| `fri_final_poly` | 4 U256 | Final polynomial coefficients |
+| `query_values` | 24 U256 | f(x), f(-x) per query per FRI layer |
+| `query_paths` | 48 U256 | Merkle authentication paths |
+| `query_metadata` | 7 U256 | num_queries, num_layers, log_trace, indices |
+| **Total calldata** | **~3.4 KB** | |
+
+#### Generating and Verifying a Proof
+
+```bash
+# Generate proof for fib(64) with 20 FRI queries
+cd prover
+cargo run --release -- --fib-n 64 --num-queries 20 > proof.json
+
+# The JSON output can be ABI-encoded and submitted to:
+# 0x572318f371e654d8f3b18209b9b6ae766326ef46 on Arbitrum Sepolia
+```
+
 ---
 
 ## Why Stylus is Faster
@@ -565,12 +677,30 @@ poseidon([1, 2]) = 0x115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a441
 - **Deterministic execution** - Same inputs always produce same outputs
 - **No owner privileges** - Fully permissionless verification
 
+### 🔍 FRI Verification Audit (2026-02-09)
+
+A code audit of the FRI verification logic identified and fixed **3 critical + 1 medium + 3 low** severity issues. All fixes are deployed in the audited contract (`0x5723...ef46`).
+
+| Severity | Issue | File | Fix |
+|----------|-------|------|-----|
+| **CRITICAL** | FRI Merkle path verification completely skipped | `fri.rs` | Added `MerkleVerifier::verify()` for every query at every FRI layer |
+| **CRITICAL** | FRI cross-layer folding result discarded (`_folded`) | `fri.rs` | Folded value now checked against next layer's f(x) |
+| **CRITICAL** | Composition-FRI commitment link not verified | `mod.rs` | Added `composition_commitment == fri_layer_commitments[0]` check |
+| MEDIUM | Query indices taken from prover without independent derivation | `fri.rs` | Indices now derived from Fiat-Shamir channel and compared |
+| LOW | `query_path_indices` field always empty | `proof.rs` | Removed; path indices derived from bit decomposition |
+| LOW | Unused variable `_log_lde_size` | `mod.rs` | Removed |
+| LOW | No `log_trace_len` range validation | `proof.rs` | Added bounds check (1..=26) |
+
+**Impact of fixes on gas**: Security checks add ~2.2x gas overhead (31.9M vs 14.4M), primarily from Merkle path verification. This is the true cost of sound STARK verification -- the pre-audit contract accepted forged proofs.
+
 ### ⚠️ Known Limitations
 
 | Limitation | Impact | Mitigation |
 |------------|--------|------------|
 | Testnet L1 gas = 0 | L1/L2 breakdown unavailable on Sepolia | Mainnet returns actual values |
-| No formal audit | Not production-ready | Use circomlib for production |
+| Small test proof | fib(8) with 4 queries is minimal | Scale to fib(64) with 20 queries for production-grade security |
+| STARK on-chain gas > SNARK | Raw STARK verification costs ~140x more gas than Groth16 | Compensated by no off-chain wrapping cost; precompiles will narrow the gap |
+| Single-TX gas limit | Production proofs (20+ queries) exceed 32M gas limit | Split verification across multiple transactions |
 
 > **Note**: This implementation is designed for demonstration and benchmarking purposes. For production ZK applications, use audited libraries like [circomlib](https://github.com/iden3/circomlib) or [arkworks](https://github.com/arkworks-rs).
 
@@ -578,69 +708,25 @@ poseidon([1, 2]) = 0x115cc0f5e7d690413df64c6b9662e9cf2a3617f2743245519e19607a441
 
 ## API Reference
 
-### Contract Interface
-
-Both contracts implement the same interface for fair comparison:
+### STARK Verifier Contract (Stylus)
 
 ```solidity
 interface IStarkVerifier {
     /// @notice Compute Poseidon hash of two field elements
-    /// @param a First input element
-    /// @param b Second input element
-    /// @return hash The Poseidon hash result
     function poseidonHash(uint256 a, uint256 b)
-        external pure returns (uint256 hash);
+        external pure returns (uint256);
 
-    /// @notice Batch compute multiple Poseidon hashes
-    /// @param inputsA Array of first elements
-    /// @param inputsB Array of second elements
-    /// @return hashes Array of hash results
-    function batchPoseidon(
-        uint256[] calldata inputsA,
-        uint256[] calldata inputsB
-    ) external pure returns (uint256[] memory hashes);
-
-    /// @notice Verify a Merkle proof
-    /// @param root Expected Merkle root
-    /// @param leaf Leaf value to verify
-    /// @param path Sibling hashes along the path
-    /// @param indices Position indicators (false=left, true=right)
-    /// @return valid True if proof is valid
-    function verifyMerklePath(
-        uint256 root,
-        uint256 leaf,
-        uint256[] calldata path,
-        bool[] calldata indices
-    ) external returns (bool valid);
-
-    /// @notice Get the last verification result
-    /// @return root Last verified root
-    /// @return result Last verification result
-    function getLastResult()
-        external view returns (uint256 root, bool result);
-
-    /// @notice Get total verification count
-    /// @return count Number of verifications performed
-    function getVerificationCount()
-        external view returns (uint256 count);
-
-    /// @notice Benchmark N sequential hashes
-    /// @param iterations Number of hash iterations
-    /// @param seedA First seed value
-    /// @param seedB Second seed value
-    /// @return result Final hash after all iterations
-    function benchmarkHash(
-        uint32 iterations,
-        uint256 seedA,
-        uint256 seedB
-    ) external pure returns (uint256 result);
-
-    /// @notice Emitted when a Merkle proof is verified
-    event MerkleVerified(
-        uint256 indexed root,
-        uint256 leaf,
-        bool result
-    );
+    /// @notice Verify a full STARK proof of Fibonacci computation
+    /// @return True if the proof is valid
+    function verifyStarkProof(
+        uint256[] calldata publicInputs,    // [a[0], b[0], claimed_result]
+        uint256[] calldata commitments,      // [trace_root, comp_root, fri_roots...]
+        uint256[] calldata oodValues,        // [a(z), b(z), a(zg), b(zg), comp(z)]
+        uint256[] calldata friFinalPoly,     // Final polynomial coefficients
+        uint256[] calldata queryValues,      // FRI query evaluations (flattened)
+        uint256[] calldata queryPaths,       // Merkle auth paths (flattened)
+        uint256[] calldata queryMetadata     // [num_queries, num_fri_layers, log_trace_len, indices...]
+    ) external pure returns (bool);
 }
 ```
 
@@ -723,16 +809,37 @@ forge test --match-test test_CircomlibCompatibility
 forge test --gas-report
 ```
 
-### Stylus Tests
+### Stylus Tests (58 tests)
 
 ```bash
 cd contracts/stylus
 
-# Run unit tests
-cargo test
+# Run all 58 unit tests
+cargo test --features export-abi
+
+# Run STARK integration test (verifies real proof from prover)
+cargo test test_verify_stark_proof_fib8
+
+# Run field arithmetic tests
+cargo test field
+
+# Run FRI tests
+cargo test fri
 
 # Run with output
 cargo test -- --nocapture
+```
+
+### Prover
+
+```bash
+cd prover
+
+# Generate proof for fib(8) with 4 queries (small, fast)
+cargo run --release -- --fib-n 8 --num-queries 4
+
+# Generate proof for fib(64) with 20 queries (~80-bit security)
+cargo run --release -- --fib-n 64 --num-queries 20
 ```
 
 ---
@@ -809,5 +916,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 <p align="center">
-  Built with for <strong>Arbitrum APAC Mini Hackathon 2026</strong>
+  Built for <strong>Arbitrum Open House NYC Buildathon 2026</strong>
 </p>

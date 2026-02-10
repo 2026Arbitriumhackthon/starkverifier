@@ -1,0 +1,6 @@
+[workspace]
+
+[workspace.networks]
+arbitrum-sepolia = { endpoint = "https://sepolia-rollup.arbitrum.io/rpc" }
+
+[contract]
