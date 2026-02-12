@@ -21,8 +21,8 @@ pub mod proof;
 use alloy_primitives::U256;
 
 use crate::field::Fp;
+use crate::keccak_hash_two;
 use crate::poseidon::field::BN254Field;
-use crate::poseidon::PoseidonHasher;
 
 use self::air::{evaluate_transition_ood, evaluate_boundary_quotients, transition_zerofier_at};
 use self::channel::Channel;
@@ -101,7 +101,7 @@ fn verify_parsed_proof(proof: &StarkProof, public_inputs: &[Fp; 3]) -> bool {
     // Seed with hash of public inputs
     let mut seed = public_inputs[0];
     for i in 1..public_inputs.len() {
-        seed = PoseidonHasher::hash_two(seed, public_inputs[i]);
+        seed = keccak_hash_two(seed, public_inputs[i]);
     }
     let mut channel = Channel::new(seed);
 
@@ -265,12 +265,12 @@ mod tests {
 
         let mut seed1 = pub_inputs[0];
         for i in 1..pub_inputs.len() {
-            seed1 = PoseidonHasher::hash_two(seed1, pub_inputs[i]);
+            seed1 = keccak_hash_two(seed1, pub_inputs[i]);
         }
 
         let mut seed2 = pub_inputs[0];
         for i in 1..pub_inputs.len() {
-            seed2 = PoseidonHasher::hash_two(seed2, pub_inputs[i]);
+            seed2 = keccak_hash_two(seed2, pub_inputs[i]);
         }
 
         assert_eq!(seed1, seed2);
