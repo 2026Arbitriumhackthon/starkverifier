@@ -1,12 +1,12 @@
-//! Poseidon Merkle Tree Commitment
+//! Keccak256 Merkle Tree Commitment
 //!
-//! Builds Merkle trees using Poseidon hash and generates authentication paths
+//! Builds Merkle trees using Keccak256 hash and generates authentication paths
 //! for the STARK prover.
 
 use alloy_primitives::U256;
-use crate::poseidon::PoseidonHasher;
+use crate::keccak::keccak_hash_two;
 
-/// A Poseidon Merkle tree for committing to polynomial evaluations.
+/// A Keccak256 Merkle tree for committing to polynomial evaluations.
 pub struct MerkleTree {
     /// All tree nodes, stored level by level from leaves to root.
     /// nodes[0..n] = leaves, nodes[n..n+n/2] = level 1, etc.
@@ -42,7 +42,7 @@ impl MerkleTree {
             for i in 0..next_size {
                 let left = nodes[level_start + 2 * i];
                 let right = nodes[level_start + 2 * i + 1];
-                nodes.push(PoseidonHasher::hash_two(left, right));
+                nodes.push(keccak_hash_two(left, right));
             }
             level_start += level_size;
             level_size = next_size;
@@ -109,12 +109,12 @@ impl MerkleTree {
 }
 
 /// Build a Merkle tree from two columns of trace evaluations.
-/// Each leaf is poseidon(col_a[i], col_b[i]).
+/// Each leaf is keccak_hash_two(col_a[i], col_b[i]).
 pub fn commit_trace(col_a: &[U256], col_b: &[U256]) -> MerkleTree {
     assert_eq!(col_a.len(), col_b.len());
     let leaves: Vec<U256> = col_a.iter()
         .zip(col_b.iter())
-        .map(|(a, b)| PoseidonHasher::hash_two(*a, *b))
+        .map(|(a, b)| keccak_hash_two(*a, *b))
         .collect();
     MerkleTree::build(&leaves)
 }
@@ -136,7 +136,7 @@ mod tests {
         assert_eq!(tree.num_leaves(), 2);
         assert_eq!(tree.depth(), 1);
 
-        let expected_root = PoseidonHasher::hash_two(U256::from(1u64), U256::from(2u64));
+        let expected_root = keccak_hash_two(U256::from(1u64), U256::from(2u64));
         assert_eq!(tree.root(), expected_root);
     }
 
@@ -156,9 +156,9 @@ mod tests {
         assert_eq!(indices.len(), 2);
 
         // Verify: manually compute
-        let h01 = PoseidonHasher::hash_two(U256::from(1u64), U256::from(2u64));
-        let h23 = PoseidonHasher::hash_two(U256::from(3u64), U256::from(4u64));
-        let root = PoseidonHasher::hash_two(h01, h23);
+        let h01 = keccak_hash_two(U256::from(1u64), U256::from(2u64));
+        let h23 = keccak_hash_two(U256::from(3u64), U256::from(4u64));
+        let root = keccak_hash_two(h01, h23);
 
         assert_eq!(tree.root(), root);
         assert_eq!(path[0], U256::from(2u64)); // sibling of leaf 0 is leaf 1
@@ -182,7 +182,7 @@ mod tests {
         assert_eq!(path[0], U256::from(30u64)); // sibling is leaf 2
         assert!(indices[0]); // leaf 3 is right child
 
-        let h01 = PoseidonHasher::hash_two(U256::from(10u64), U256::from(20u64));
+        let h01 = keccak_hash_two(U256::from(10u64), U256::from(20u64));
         assert_eq!(path[1], h01); // sibling of h23 is h01
         assert!(indices[1]); // h23 is right child
     }
@@ -193,9 +193,9 @@ mod tests {
         let col_b = vec![U256::from(3u64), U256::from(4u64)];
         let tree = commit_trace(&col_a, &col_b);
 
-        let leaf0 = PoseidonHasher::hash_two(U256::from(1u64), U256::from(3u64));
-        let leaf1 = PoseidonHasher::hash_two(U256::from(2u64), U256::from(4u64));
-        let expected_root = PoseidonHasher::hash_two(leaf0, leaf1);
+        let leaf0 = keccak_hash_two(U256::from(1u64), U256::from(3u64));
+        let leaf1 = keccak_hash_two(U256::from(2u64), U256::from(4u64));
+        let expected_root = keccak_hash_two(leaf0, leaf1);
 
         assert_eq!(tree.root(), expected_root);
     }
