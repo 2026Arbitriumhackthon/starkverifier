@@ -48,4 +48,54 @@ impl StarkProverWasm {
         );
         proof.to_json()
     }
+
+    /// Generate a BTC Lock STARK proof.
+    ///
+    /// Returns a JSON string containing the serialized proof.
+    #[wasm_bindgen(js_name = "generateBtcLockProof")]
+    pub fn generate_btc_lock_proof(
+        &self,
+        lock_amount: u32,
+        timelock_height: u32,
+        current_height: u32,
+        script_type: u32,
+        num_queries: u32,
+    ) -> String {
+        let proof = crate::prove_btc_lock(
+            lock_amount as u64,
+            timelock_height as u64,
+            current_height as u64,
+            script_type as u64,
+            num_queries as usize,
+        );
+        proof.to_json()
+    }
+
+    /// Generate a BTC Lock proof with progress updates via a JS callback.
+    #[wasm_bindgen(js_name = "generateBtcLockProofWithProgress")]
+    pub fn generate_btc_lock_proof_with_progress(
+        &self,
+        lock_amount: u32,
+        timelock_height: u32,
+        current_height: u32,
+        script_type: u32,
+        num_queries: u32,
+        callback: &js_sys::Function,
+    ) -> String {
+        let proof = crate::prove_btc_lock_with_progress(
+            lock_amount as u64,
+            timelock_height as u64,
+            current_height as u64,
+            script_type as u64,
+            num_queries as usize,
+            |progress| {
+                let this = JsValue::null();
+                let stage = JsValue::from_str(progress.stage);
+                let detail = JsValue::from_str(progress.detail);
+                let percent = JsValue::from_f64(progress.percent as f64);
+                let _ = callback.call3(&this, &stage, &detail, &percent);
+            },
+        );
+        proof.to_json()
+    }
 }
