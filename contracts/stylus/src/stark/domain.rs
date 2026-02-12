@@ -7,7 +7,7 @@
 use alloy_primitives::U256;
 
 use crate::field::Fp;
-use crate::poseidon::field::BN254Field;
+use crate::field::BN254Field;
 
 /// Generator of the 2^28 multiplicative subgroup of BN254 scalar field (Montgomery form).
 pub const GENERATOR_2_28: Fp = Fp::from_raw([
@@ -37,7 +37,7 @@ pub fn evaluate_at(gen: Fp, index: u64) -> Fp {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::poseidon::field::BN254_PRIME;
+    use crate::field::BN254_PRIME;
 
     #[test]
     fn test_generator_2_28_is_root_of_unity() {

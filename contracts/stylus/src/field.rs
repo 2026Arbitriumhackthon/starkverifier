@@ -8,6 +8,40 @@
 
 use alloy_primitives::U256;
 
+/// BN254 field prime as U256 (used at ABI boundaries and tests)
+pub const BN254_PRIME: U256 = U256::from_limbs([
+    0x43e1f593f0000001,
+    0x2833e84879b97091,
+    0xb85045b68181585d,
+    0x30644e72e131a029,
+]);
+
+/// BN254 field arithmetic operations (thin wrapper over Fp)
+pub struct BN254Field;
+
+impl BN254Field {
+    #[inline(always)]
+    pub fn add(a: Fp, b: Fp) -> Fp { Fp::add(a, b) }
+
+    #[inline(always)]
+    pub fn sub(a: Fp, b: Fp) -> Fp { Fp::sub(a, b) }
+
+    #[inline(always)]
+    pub fn mul(a: Fp, b: Fp) -> Fp { Fp::mul(a, b) }
+
+    #[inline(always)]
+    pub fn neg(a: Fp) -> Fp { Fp::neg(a) }
+
+    #[inline]
+    pub fn pow(base: Fp, exp: U256) -> Fp { Fp::pow(base, exp) }
+
+    #[inline]
+    pub fn inv(a: Fp) -> Fp { Fp::inv(a) }
+
+    #[inline]
+    pub fn div(a: Fp, b: Fp) -> Fp { Fp::div(a, b) }
+}
+
 /// BN254 scalar field modulus (little-endian limbs)
 /// p = 21888242871839275222246405745257275088548364400416034343698204186575808495617
 const MODULUS: [u64; 4] = [

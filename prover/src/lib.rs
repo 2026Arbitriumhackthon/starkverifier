@@ -10,7 +10,6 @@ pub mod domain;
 pub mod field;
 pub mod fri;
 pub mod keccak;
-pub mod poseidon;
 pub mod proof;
 pub mod trace;
 

@@ -1,6 +1,6 @@
 //! Keccak256 hash for the prover
 //!
-//! Drop-in replacement for poseidon.rs. Produces identical output to the
+//! Produces identical output to the
 //! on-chain verifier's `keccak_hash_two` given the same field element inputs.
 //!
 //! Encoding contract (must match verifier exactly):

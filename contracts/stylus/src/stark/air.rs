@@ -8,7 +8,7 @@
 use alloy_primitives::U256;
 
 use crate::field::Fp;
-use crate::poseidon::field::BN254Field;
+use crate::field::BN254Field;
 
 /// Number of columns in the Fibonacci trace
 pub const NUM_COLUMNS: usize = 2;

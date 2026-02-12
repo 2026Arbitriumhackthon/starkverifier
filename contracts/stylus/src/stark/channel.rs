@@ -95,7 +95,7 @@ impl Channel {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::poseidon::field::BN254_PRIME;
+    use crate::field::BN254_PRIME;
 
     #[test]
     fn test_channel_deterministic() {

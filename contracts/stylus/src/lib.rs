@@ -12,11 +12,9 @@ use stylus_sdk::{alloy_primitives::U256, prelude::*};
 
 pub mod field;
 pub mod merkle;
-pub mod poseidon;
 pub mod stark;
 
 use field::Fp;
-use poseidon::PoseidonHasher;
 
 /// Keccak-based hash of two field elements.
 ///
@@ -26,8 +24,7 @@ use poseidon::PoseidonHasher;
 /// as a big-endian U256 and converted to Fp (which applies mod BN254_PRIME via
 /// Montgomery conversion).
 ///
-/// This function is the drop-in replacement for `PoseidonHasher::hash_two` and must
-/// produce identical output on both the on-chain verifier and off-chain prover.
+/// This must produce identical output on both the on-chain verifier and off-chain prover.
 #[inline]
 pub fn keccak_hash_two(a: Fp, b: Fp) -> Fp {
     let mut buf = [0u8; 64];
@@ -45,11 +42,6 @@ sol_storage! {
 
 #[public]
 impl StarkVerifier {
-    /// Compute Poseidon hash of two U256 inputs
-    pub fn poseidon_hash(&self, a: U256, b: U256) -> U256 {
-        PoseidonHasher::hash_two(Fp::from_u256(a), Fp::from_u256(b)).to_u256()
-    }
-
     /// Verify a full STARK proof of Fibonacci computation.
     pub fn verify_stark_proof(
         &self,
@@ -76,7 +68,7 @@ impl StarkVerifier {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::poseidon::field::BN254_PRIME;
+    use crate::field::BN254_PRIME;
 
     // =====================================================================
     // Cross-validation test vectors for keccak_hash_two
