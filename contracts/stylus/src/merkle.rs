@@ -1,13 +1,12 @@
 //! Merkle Path Verification
 //!
-//! Implements Merkle tree path verification using Poseidon hash.
+//! Implements Merkle tree path verification using Keccak256 hash.
 //! Supports verification of membership proofs for trees of any depth.
 
 use crate::field::Fp;
+use crate::keccak_hash_two;
 
-use crate::poseidon::PoseidonHasher;
-
-/// Merkle path verifier using Poseidon hash
+/// Merkle path verifier using Keccak256 hash
 pub struct MerkleVerifier;
 
 impl MerkleVerifier {
@@ -41,9 +40,9 @@ impl MerkleVerifier {
         // Walk up the tree
         for (sibling, is_right) in path.iter().zip(indices.iter()) {
             current = if *is_right {
-                PoseidonHasher::hash_two(*sibling, current)
+                keccak_hash_two(*sibling, current)
             } else {
-                PoseidonHasher::hash_two(current, *sibling)
+                keccak_hash_two(current, *sibling)
             };
         }
 
@@ -68,7 +67,7 @@ impl MerkleVerifier {
             for chunk in current_level.chunks(2) {
                 let left = chunk[0];
                 let right = if chunk.len() > 1 { chunk[1] } else { chunk[0] };
-                next_level.push(PoseidonHasher::hash_two(left, right));
+                next_level.push(keccak_hash_two(left, right));
             }
 
             current_level = next_level;
@@ -96,7 +95,7 @@ mod tests {
         let leaf0 = Fp::from_u256(U256::from(100u64));
         let leaf1 = Fp::from_u256(U256::from(200u64));
 
-        let root = PoseidonHasher::hash_two(leaf0, leaf1);
+        let root = keccak_hash_two(leaf0, leaf1);
 
         assert!(MerkleVerifier::verify(root, leaf0, &[leaf1], &[false]));
         assert!(MerkleVerifier::verify(root, leaf1, &[leaf0], &[true]));
@@ -111,9 +110,9 @@ mod tests {
             Fp::from_u256(U256::from(4u64)),
         ];
 
-        let h01 = PoseidonHasher::hash_two(leaves[0], leaves[1]);
-        let h23 = PoseidonHasher::hash_two(leaves[2], leaves[3]);
-        let root = PoseidonHasher::hash_two(h01, h23);
+        let h01 = keccak_hash_two(leaves[0], leaves[1]);
+        let h23 = keccak_hash_two(leaves[2], leaves[3]);
+        let root = keccak_hash_two(h01, h23);
 
         assert!(MerkleVerifier::verify(
             root, leaves[0], &[leaves[1], h23], &[false, false]
@@ -127,11 +126,13 @@ mod tests {
     fn test_invalid_proof() {
         let leaf0 = Fp::from_u256(U256::from(100u64));
         let leaf1 = Fp::from_u256(U256::from(200u64));
-        let root = PoseidonHasher::hash_two(leaf0, leaf1);
+        let root = keccak_hash_two(leaf0, leaf1);
 
+        // Wrong sibling → wrong root
         assert!(!MerkleVerifier::verify(
             root, leaf0, &[Fp::from_u256(U256::from(999u64))], &[false]
         ));
+        // Wrong position → wrong root
         assert!(!MerkleVerifier::verify(root, leaf0, &[leaf1], &[true]));
     }
 
@@ -177,7 +178,7 @@ mod tests {
             for chunk in current_level.chunks(2) {
                 let left = chunk[0];
                 let right = if chunk.len() > 1 { chunk[1] } else { chunk[0] };
-                next_level.push(PoseidonHasher::hash_two(left, right));
+                next_level.push(keccak_hash_two(left, right));
             }
 
             target_index /= 2;
