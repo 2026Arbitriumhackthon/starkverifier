@@ -25,7 +25,7 @@ use crate::compose::evaluate_composition_on_lde;
 use crate::domain::{domain_generator, get_domain};
 use crate::field::BN254Field;
 use crate::fri::{fri_commit, fri_query_proofs};
-use crate::poseidon::PoseidonHasher;
+use crate::keccak::keccak_hash_two;
 use crate::proof::SerializedProof;
 use crate::trace::FibonacciTrace;
 
@@ -114,7 +114,7 @@ pub fn prove_fibonacci_with_progress(
 
     let mut seed = public_inputs[0];
     for i in 1..3 {
-        seed = PoseidonHasher::hash_two(seed, public_inputs[i]);
+        seed = keccak_hash_two(seed, public_inputs[i]);
     }
     let mut channel = Channel::new(seed);
     channel.commit(trace_commitment);

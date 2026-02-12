@@ -1,11 +1,10 @@
 //! Fiat-Shamir Channel (prover side)
 //!
 //! Must produce identical output to the on-chain verifier's channel
-//! given the same inputs. Both use Poseidon hash.
+//! given the same inputs. Both use Keccak256 hash.
 
 use alloy_primitives::U256;
-use crate::field::{BN254Field, BN254_PRIME};
-use crate::poseidon::PoseidonHasher;
+use crate::keccak::keccak_hash_two;
 
 /// Fiat-Shamir channel for deterministic challenge generation.
 pub struct Channel {
@@ -22,18 +21,14 @@ impl Channel {
     }
 
     pub fn commit(&mut self, value: U256) {
-        self.state = PoseidonHasher::hash_two(self.state, value);
+        self.state = keccak_hash_two(self.state, value);
         self.counter = 0;
     }
 
     pub fn draw_felt(&mut self) -> U256 {
-        let challenge = PoseidonHasher::hash_two(self.state, U256::from(self.counter));
+        let challenge = keccak_hash_two(self.state, U256::from(self.counter));
         self.counter += 1;
-        if challenge >= BN254_PRIME {
-            BN254Field::reduce(challenge)
-        } else {
-            challenge
-        }
+        challenge
     }
 
     pub fn draw_queries(&mut self, count: usize, domain_size: usize) -> Vec<usize> {
