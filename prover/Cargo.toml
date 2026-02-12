@@ -19,10 +19,11 @@ cli = ["clap"]
 wasm = ["wasm-bindgen", "js-sys", "getrandom"]
 
 [dependencies]
-# Share field arithmetic and Poseidon with the on-chain verifier
+# Share field arithmetic with the on-chain verifier
 alloy-primitives = { version = "0.8", default-features = false }
 ruint = "=1.12.3"
 hex = "0.4.3"
+tiny-keccak = { version = "2.0", features = ["keccak"] }
 
 # CLI-only dependencies
 clap = { version = "4", features = ["derive"], optional = true }

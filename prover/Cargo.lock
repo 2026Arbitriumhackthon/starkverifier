@@ -969,6 +969,7 @@ dependencies = [
  "hex",
  "js-sys",
  "ruint",
+ "tiny-keccak",
  "wasm-bindgen",
 ]
 
