@@ -1,12 +1,12 @@
-//! Fiat-Shamir Channel using Poseidon Hash
+//! Fiat-Shamir Channel using Keccak256
 //!
 //! Implements a deterministic transcript for non-interactive proofs.
-//! All randomness is derived from Poseidon hashing of the protocol transcript.
+//! All randomness is derived from Keccak256 hashing of the protocol transcript.
 
 use alloy_primitives::U256;
 
 use crate::field::Fp;
-use crate::poseidon::PoseidonHasher;
+use crate::keccak_hash_two;
 
 /// Fiat-Shamir channel for deterministic challenge generation.
 pub struct Channel {
@@ -27,14 +27,14 @@ impl Channel {
 
     /// Commit a value to the channel transcript.
     pub fn commit(&mut self, value: Fp) {
-        self.state = PoseidonHasher::hash_two(self.state, value);
+        self.state = keccak_hash_two(self.state, value);
         self.counter = 0;
     }
 
     /// Draw a random field element from the channel.
     pub fn draw_felt(&mut self) -> Fp {
         let counter_fp = Fp::from_u256(U256::from(self.counter));
-        let challenge = PoseidonHasher::hash_two(self.state, counter_fp);
+        let challenge = keccak_hash_two(self.state, counter_fp);
         self.counter += 1;
         challenge
     }
@@ -95,6 +95,7 @@ impl Channel {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::poseidon::field::BN254_PRIME;
 
     #[test]
     fn test_channel_deterministic() {
@@ -142,7 +143,6 @@ mod tests {
 
     #[test]
     fn test_draw_felt_in_field() {
-        use crate::poseidon::field::BN254_PRIME;
         let mut ch = Channel::new(Fp::from_u256(U256::from(999u64)));
         for _ in 0..100 {
             let v = ch.draw_felt();
