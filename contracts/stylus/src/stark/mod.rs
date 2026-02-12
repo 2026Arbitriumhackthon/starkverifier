@@ -569,4 +569,120 @@ mod tests {
             "Tampered proof should fail"
         );
     }
+
+    /// Integration test: verify a real BTC Lock STARK proof.
+    /// Proof: cargo run --features cli --release -- --mode btclock \
+    ///   --lock-amount 100000 --timelock-height 900000 --current-height 850000 \
+    ///   --script-type 2 --num-queries 4
+    #[test]
+    fn test_verify_btc_lock_proof() {
+        use alloc::vec;
+
+        let public_inputs = vec![
+            U256::from(0x186a0u64),  // lock_amount = 100000
+            U256::from(0xdbba0u64),  // timelock_height = 900000
+            U256::from(0xcf850u64),  // current_height = 850000
+            U256::from(2u64),        // script_type = P2WSH
+        ];
+
+        let commitments = vec![
+            u("2a10e251a3af82569f347dc9cc13100affa2d856b1442cb9b18abb3d1a644f1e"),
+            u("28cd57eb223f17d37f20f86a8168a59ad161567d925e86e751a9b1493d27aa00"),
+            u("28cd57eb223f17d37f20f86a8168a59ad161567d925e86e751a9b1493d27aa00"),
+            u("19dcd5ea3705cc53d3063136623f6d5b1585ef6e74614338b52e74d7e138f6c0"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+        ];
+
+        let ood_values = vec![
+            u("00000000000000000000000000000000000000000000000000000000000186a0"),
+            u("08bbb7b8c841b9540ae038f0d64561208fa8ed6a1ecb62e4ed52cbd0abb6f7e4"),
+            u("000000000000000000000000000000000000000000000000000000000000c350"),
+            u("11776f71908372a815c071e1ac8ac2411f51dad43d96c5c9daa597a1576defc8"),
+            u("0000000000000000000000000000000000000000000000000000000000000002"),
+            u("00000000000000000000000000000000000000000000000000000000000186a0"),
+            u("08bbb7b8c841b9540ae038f0d64561208fa8ed6a1ecb62e4ed52cbd0abb6f7e4"),
+            u("000000000000000000000000000000000000000000000000000000000000c350"),
+            u("11776f71908372a815c071e1ac8ac2411f51dad43d96c5c9daa597a1576defc8"),
+            u("0000000000000000000000000000000000000000000000000000000000000002"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+        ];
+
+        let fri_final_poly = vec![U256::ZERO; 4];
+
+        let query_values = vec![U256::ZERO; 24];
+
+        let query_paths = vec![
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("19dcd5ea3705cc53d3063136623f6d5b1585ef6e74614338b52e74d7e138f6c0"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("19dcd5ea3705cc53d3063136623f6d5b1585ef6e74614338b52e74d7e138f6c0"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("19dcd5ea3705cc53d3063136623f6d5b1585ef6e74614338b52e74d7e138f6c0"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("19dcd5ea3705cc53d3063136623f6d5b1585ef6e74614338b52e74d7e138f6c0"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+            u("28d78349cf1e996a8c9e843aca183cc6c02698676320aa051ce6fdfa9c62d042"),
+            u("0000000000000000000000000000000000000000000000000000000000000000"),
+            u("1c053d5dd362f3501993d420ba93e87eb29b2bb845ddeefe74b26929c7ba5fb2"),
+            u("0681ccb0c2257b0735276ebdde4e1ea661b473fe8aa3f428e29b9ff332918e74"),
+        ];
+
+        let query_metadata = vec![
+            U256::from(4u64), U256::from(3u64), U256::from(3u64),
+            U256::from(2u64), U256::from(15u64), U256::from(21u64), U256::from(31u64),
+        ];
+
+        // Valid BTC lock proof should verify
+        assert!(
+            verify_btc_lock_stark(&public_inputs, &commitments, &ood_values, &fri_final_poly,
+                &query_values, &query_paths, &query_metadata),
+            "Valid BTC Lock STARK proof should verify"
+        );
+
+        // Tampered lock amount should fail
+        let bad_inputs = vec![
+            U256::from(999u64), U256::from(0xdbba0u64),
+            U256::from(0xcf850u64), U256::from(2u64),
+        ];
+        assert!(
+            !verify_btc_lock_stark(&bad_inputs, &commitments, &ood_values, &fri_final_poly,
+                &query_values, &query_paths, &query_metadata),
+            "Tampered BTC Lock proof should fail"
+        );
+    }
 }
