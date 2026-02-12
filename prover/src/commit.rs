@@ -119,6 +119,27 @@ pub fn commit_trace(col_a: &[U256], col_b: &[U256]) -> MerkleTree {
     MerkleTree::build(&leaves)
 }
 
+/// Build a Merkle tree from multiple columns of trace evaluations.
+/// Each leaf is the chain-hash of all columns: keccak(keccak(...keccak(c0, c1), c2)..., cN).
+pub fn commit_trace_multi(cols: &[&[U256]]) -> MerkleTree {
+    assert!(!cols.is_empty());
+    let n = cols[0].len();
+    for c in cols {
+        assert_eq!(c.len(), n);
+    }
+
+    let leaves: Vec<U256> = (0..n)
+        .map(|i| {
+            let mut h = keccak_hash_two(cols[0][i], cols[1][i]);
+            for col in &cols[2..] {
+                h = keccak_hash_two(h, col[i]);
+            }
+            h
+        })
+        .collect();
+    MerkleTree::build(&leaves)
+}
+
 /// Build a Merkle tree from a single column of evaluations.
 pub fn commit_column(values: &[U256]) -> MerkleTree {
     MerkleTree::build(values)
