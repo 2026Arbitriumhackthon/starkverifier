@@ -13,6 +13,7 @@
 //! 7. Verify query consistency via Merkle paths
 
 pub mod air;
+pub mod btc_air;
 pub mod channel;
 pub mod domain;
 pub mod fri;
@@ -28,7 +29,7 @@ use self::air::{evaluate_transition_ood, evaluate_boundary_quotients, transition
 use self::channel::Channel;
 use self::domain::domain_generator;
 use self::fri::verify_fri;
-use self::proof::{parse_stark_proof, StarkProof};
+use self::proof::{parse_stark_proof, StarkProof, parse_btc_lock_proof, BtcLockStarkProof};
 
 /// Default FRI blowup factor
 pub const BLOWUP_FACTOR: u32 = 4;
@@ -184,6 +185,152 @@ fn verify_parsed_proof(proof: &StarkProof, public_inputs: &[Fp; 3]) -> bool {
     // =============================
     // Step 7: Verify FRI proof
     // =============================
+    let fri_params = fri::FriParams::new(
+        log_trace_len,
+        proof.num_fri_layers,
+        proof.query_indices.len(),
+        BLOWUP_FACTOR,
+    );
+
+    let fri_valid = verify_fri(
+        &mut channel,
+        &proof.fri_layer_commitments,
+        &proof.query_values,
+        &proof.query_paths,
+        &proof.query_indices,
+        &proof.fri_final_poly,
+        &fri_params,
+    );
+
+    if !fri_valid {
+        return false;
+    }
+
+    true
+}
+
+/// Verify a full STARK proof of BTC lock verification.
+///
+/// # Arguments
+/// * `public_inputs` - [lock_amount, timelock_height, current_height, script_type]
+/// * `commitments` - Merkle commitments [trace_root, comp_root, fri_roots...]
+/// * `ood_values` - OOD evaluations [5 trace at z, 5 trace at zg, comp(z)] = 11 values
+/// * `fri_final_poly` - Final low-degree polynomial coefficients
+/// * `query_values` - Query evaluation data (flattened)
+/// * `query_paths` - Merkle authentication paths (flattened)
+/// * `query_metadata` - [num_queries, num_fri_layers, log_trace_len, indices...]
+pub fn verify_btc_lock_stark(
+    public_inputs: &[U256],
+    commitments: &[U256],
+    ood_values: &[U256],
+    fri_final_poly: &[U256],
+    query_values: &[U256],
+    query_paths: &[U256],
+    query_metadata: &[U256],
+) -> bool {
+    let proof = match parse_btc_lock_proof(
+        commitments,
+        ood_values,
+        fri_final_poly,
+        query_values,
+        query_paths,
+        query_metadata,
+    ) {
+        Some(p) => p,
+        None => return false,
+    };
+
+    if public_inputs.len() < 4 {
+        return false;
+    }
+
+    let pub_fp = [
+        Fp::from_u256(public_inputs[0]),
+        Fp::from_u256(public_inputs[1]),
+        Fp::from_u256(public_inputs[2]),
+        Fp::from_u256(public_inputs[3]),
+    ];
+
+    verify_btc_lock_parsed_proof(&proof, &pub_fp)
+}
+
+/// Verify a parsed BTC Lock STARK proof.
+fn verify_btc_lock_parsed_proof(proof: &BtcLockStarkProof, public_inputs: &[Fp; 4]) -> bool {
+    let log_trace_len = proof.log_trace_len;
+    let trace_len = 1u64 << log_trace_len;
+
+    // Step 1: Initialize Fiat-Shamir channel
+    let mut seed = public_inputs[0];
+    for i in 1..public_inputs.len() {
+        seed = keccak_hash_two(seed, public_inputs[i]);
+    }
+    let mut channel = Channel::new(seed);
+
+    // Step 2: Commit trace and draw OOD point
+    channel.commit(proof.trace_commitment);
+    let z = channel.draw_felt();
+
+    // Step 3: Verify AIR constraints at OOD point z
+    let trace_gen = domain_generator(log_trace_len);
+
+    let transition_evals = btc_air::evaluate_transition_ood(
+        proof.trace_ood_evals,
+        proof.trace_ood_evals_next,
+    );
+
+    let zerofier = transition_zerofier_at(z, trace_len, trace_gen);
+
+    // Compute 8 transition quotients
+    let mut tqs = [Fp::ZERO; 8];
+    for i in 0..8 {
+        tqs[i] = BN254Field::div(transition_evals[i], zerofier);
+    }
+
+    // Step 4: Verify boundary constraints
+    let trace_domain_first = Fp::ONE;
+    let trace_domain_last = BN254Field::pow(trace_gen, U256::from(trace_len - 1));
+
+    let boundary_quotients = btc_air::evaluate_boundary_quotients(
+        proof.trace_ood_evals,
+        z,
+        trace_domain_first,
+        trace_domain_last,
+        *public_inputs,
+    );
+
+    // Step 5: Draw 12 alphas and compose
+    let mut alphas = [Fp::ZERO; 12];
+    for i in 0..12 {
+        alphas[i] = channel.draw_felt();
+    }
+
+    let composition_at_z = {
+        let mut comp = Fp::ZERO;
+        // 8 transition quotients
+        for i in 0..8 {
+            comp = BN254Field::add(comp, BN254Field::mul(alphas[i], tqs[i]));
+        }
+        // 4 boundary quotients
+        for i in 0..4 {
+            comp = BN254Field::add(comp, BN254Field::mul(alphas[8 + i], boundary_quotients[i]));
+        }
+        comp
+    };
+
+    // Step 6: Verify composition commitment
+    if composition_at_z != proof.composition_ood_eval {
+        return false;
+    }
+
+    channel.commit(proof.composition_commitment);
+
+    if proof.fri_layer_commitments.is_empty()
+        || proof.composition_commitment != proof.fri_layer_commitments[0]
+    {
+        return false;
+    }
+
+    // Step 7: Verify FRI proof
     let fri_params = fri::FriParams::new(
         log_trace_len,
         proof.num_fri_layers,
