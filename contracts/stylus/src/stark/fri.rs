@@ -1,7 +1,7 @@
 //! FRI (Fast Reed-Solomon Interactive Oracle Proof) Verifier
 
 use crate::field::Fp;
-use crate::poseidon::field::BN254Field;
+use crate::field::BN254Field;
 use crate::merkle::MerkleVerifier;
 use super::channel::Channel;
 use super::domain;

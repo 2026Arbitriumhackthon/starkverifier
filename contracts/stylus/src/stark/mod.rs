@@ -22,7 +22,7 @@ use alloy_primitives::U256;
 
 use crate::field::Fp;
 use crate::keccak_hash_two;
-use crate::poseidon::field::BN254Field;
+use crate::field::BN254Field;
 
 use self::air::{evaluate_transition_ood, evaluate_boundary_quotients, transition_zerofier_at};
 use self::channel::Channel;
