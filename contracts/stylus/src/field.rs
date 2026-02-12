@@ -68,6 +68,13 @@ impl Fp {
         U256::from_limbs(r.0)
     }
 
+    /// Convert to canonical 32-byte big-endian representation.
+    /// Used for keccak hashing where byte-level consistency is required.
+    #[inline]
+    pub fn to_be_bytes(self) -> [u8; 32] {
+        self.to_u256().to_be_bytes::<32>()
+    }
+
     /// Modular addition: (a + b) mod p
     #[inline(always)]
     pub fn add(a: Fp, b: Fp) -> Fp {
