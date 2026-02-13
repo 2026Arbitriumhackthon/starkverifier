@@ -32,6 +32,10 @@ impl BtcLockTrace {
         current_height: u64,
         script_type: u64,
     ) -> Self {
+        assert!(lock_amount > 0, "lock_amount must be positive");
+        assert!(timelock_height > current_height, "timelock must be in future");
+        assert!(script_type == 1 || script_type == 2, "script_type must be 1 (P2SH) or 2 (P2WSH)");
+
         let trace_len = 8usize; // Fixed 8 rows (2^3)
 
         let amt = U256::from(lock_amount);

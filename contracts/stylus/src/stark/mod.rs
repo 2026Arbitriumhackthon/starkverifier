@@ -244,6 +244,12 @@ pub fn verify_btc_lock_stark(
         return false;
     }
 
+    // C1 fix: reject expired timelocks
+    // public_inputs[1] = timelock_height, public_inputs[2] = current_height
+    if public_inputs[2] >= public_inputs[1] {
+        return false;
+    }
+
     let pub_fp = [
         Fp::from_u256(public_inputs[0]),
         Fp::from_u256(public_inputs[1]),

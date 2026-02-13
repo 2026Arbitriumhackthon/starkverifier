@@ -193,6 +193,26 @@ pub fn parse_btc_lock_proof(
     ];
     let composition_ood_eval = Fp::from_u256(ood_values[10]);
 
+    // C2 fix: validate query_values length
+    // Each query needs num_fri_layers * 2 values (fx, f_neg_x per layer)
+    let expected_qv = num_queries * num_fri_layers * 2;
+    if query_values.len() < expected_qv {
+        return None;
+    }
+
+    // C2 fix: validate query_paths length
+    // Each query needs sum of (log_domain_size - layer) path elements across all FRI layers
+    // log_domain_size = log_trace_len + 2 (BLOWUP_FACTOR = 4)
+    let log_domain_size = log_trace_len as usize + 2;
+    let mut path_elements_per_query = 0usize;
+    for layer in 0..num_fri_layers {
+        path_elements_per_query += log_domain_size - layer;
+    }
+    let expected_qp = num_queries * path_elements_per_query;
+    if query_paths.len() < expected_qp {
+        return None;
+    }
+
     Some(BtcLockStarkProof {
         trace_commitment,
         composition_commitment,
@@ -302,8 +322,10 @@ mod tests {
         ];
 
         let fri_final = vec![U256::from(100u64), U256::from(101u64)];
+        // 1 query * 2 layers * 2 = 4 values
         let query_values = vec![U256::from(30u64); 4];
-        let query_paths = vec![];
+        // 1 query * ((8-0) + (8-1)) = 15 path elements (log_domain_size = 6+2 = 8)
+        let query_paths = vec![U256::from(40u64); 15];
         let query_metadata = vec![
             U256::from(1u64), U256::from(2u64), U256::from(6u64),
             U256::from(5u64),
