@@ -3,13 +3,15 @@
 //! Generates STARK proofs for Fibonacci computation.
 //! Can be used as a library (native or WASM) or via the CLI binary.
 
+pub mod btc_compose;
+pub mod btc_trace;
 pub mod channel;
 pub mod commit;
 pub mod compose;
 pub mod domain;
 pub mod field;
 pub mod fri;
-pub mod poseidon;
+pub mod keccak;
 pub mod proof;
 pub mod trace;
 
@@ -18,13 +20,15 @@ pub mod wasm;
 
 use alloy_primitives::U256;
 
+use crate::btc_compose::evaluate_btc_composition_on_lde;
+use crate::btc_trace::BtcLockTrace;
 use crate::channel::Channel;
-use crate::commit::{commit_column, commit_trace};
+use crate::commit::{commit_column, commit_trace, commit_trace_multi};
 use crate::compose::evaluate_composition_on_lde;
 use crate::domain::{domain_generator, get_domain};
 use crate::field::BN254Field;
 use crate::fri::{fri_commit, fri_query_proofs};
-use crate::poseidon::PoseidonHasher;
+use crate::keccak::keccak_hash_two;
 use crate::proof::SerializedProof;
 use crate::trace::FibonacciTrace;
 
@@ -113,7 +117,7 @@ pub fn prove_fibonacci_with_progress(
 
     let mut seed = public_inputs[0];
     for i in 1..3 {
-        seed = PoseidonHasher::hash_two(seed, public_inputs[i]);
+        seed = keccak_hash_two(seed, public_inputs[i]);
     }
     let mut channel = Channel::new(seed);
     channel.commit(trace_commitment);
@@ -363,6 +367,288 @@ fn compute_composition_at_z(
     comp = BN254Field::add(comp, BN254Field::mul(alphas[2], bq0));
     comp = BN254Field::add(comp, BN254Field::mul(alphas[3], bq1));
     comp = BN254Field::add(comp, BN254Field::mul(alphas[4], bq2));
+
+    comp
+}
+
+/// Generate a STARK proof for BTC lock verification.
+pub fn prove_btc_lock(
+    lock_amount: u64,
+    timelock_height: u64,
+    current_height: u64,
+    script_type: u64,
+    num_queries: usize,
+) -> SerializedProof {
+    prove_btc_lock_with_progress(lock_amount, timelock_height, current_height, script_type, num_queries, |_| {})
+}
+
+/// Generate a STARK proof for BTC lock verification with progress callbacks.
+pub fn prove_btc_lock_with_progress(
+    lock_amount: u64,
+    timelock_height: u64,
+    current_height: u64,
+    script_type: u64,
+    num_queries: usize,
+    on_progress: impl Fn(ProveProgress),
+) -> SerializedProof {
+    let blowup: u32 = 4;
+
+    // Step 1: Generate BTC lock trace
+    on_progress(ProveProgress {
+        stage: "trace",
+        detail: "Generating BTC lock trace",
+        percent: 0,
+    });
+
+    let trace = BtcLockTrace::generate(lock_amount, timelock_height, current_height, script_type);
+    let public_inputs = trace.public_inputs(timelock_height, current_height);
+    let log_trace_len = trace.log_len();
+    let trace_len = trace.len;
+
+    // Step 2: Compute LDE
+    on_progress(ProveProgress {
+        stage: "trace",
+        detail: "Computing Low Degree Extension",
+        percent: 10,
+    });
+
+    let log_blowup: u32 = match blowup {
+        2 => 1,
+        4 => 2,
+        8 => 3,
+        _ => 2,
+    };
+    let log_lde_size = log_trace_len + log_blowup;
+    let lde_size = 1usize << log_lde_size;
+
+    let trace_domain = get_domain(log_trace_len);
+    let lde_domain = get_domain(log_lde_size);
+
+    let trace_lde_0 = evaluate_trace_on_lde(&trace.col_lock_amount, &trace_domain, &lde_domain);
+    let trace_lde_1 = evaluate_trace_on_lde(&trace.col_amount_inv, &trace_domain, &lde_domain);
+    let trace_lde_2 = evaluate_trace_on_lde(&trace.col_timelock_delta, &trace_domain, &lde_domain);
+    let trace_lde_3 = evaluate_trace_on_lde(&trace.col_delta_inv, &trace_domain, &lde_domain);
+    let trace_lde_4 = evaluate_trace_on_lde(&trace.col_script_type, &trace_domain, &lde_domain);
+
+    // Step 3: Commit to trace (5-column Merkle)
+    on_progress(ProveProgress {
+        stage: "commit",
+        detail: "Committing to trace polynomials",
+        percent: 30,
+    });
+
+    let trace_tree = commit_trace_multi(&[
+        &trace_lde_0, &trace_lde_1, &trace_lde_2, &trace_lde_3, &trace_lde_4,
+    ]);
+    let trace_commitment = trace_tree.root();
+
+    // Step 4: Fiat-Shamir + OOD evaluation
+    on_progress(ProveProgress {
+        stage: "commit",
+        detail: "Running Fiat-Shamir protocol",
+        percent: 40,
+    });
+
+    let mut seed = public_inputs[0];
+    for i in 1..4 {
+        seed = keccak_hash_two(seed, public_inputs[i]);
+    }
+    let mut channel = Channel::new(seed);
+    channel.commit(trace_commitment);
+    let z = channel.draw_felt();
+
+    let trace_gen = domain_generator(log_trace_len);
+    let zg = BN254Field::mul(z, trace_gen);
+
+    // Evaluate 5 columns at z and zg
+    let cols = [
+        &trace.col_lock_amount[..],
+        &trace.col_amount_inv[..],
+        &trace.col_timelock_delta[..],
+        &trace.col_delta_inv[..],
+        &trace.col_script_type[..],
+    ];
+
+    let mut trace_ood_evals = [U256::ZERO; 5];
+    let mut trace_ood_evals_next = [U256::ZERO; 5];
+    for (j, col) in cols.iter().enumerate() {
+        trace_ood_evals[j] = eval_at_point(col, &trace_domain, z);
+        trace_ood_evals_next[j] = eval_at_point(col, &trace_domain, zg);
+    }
+
+    // Draw 12 alphas
+    let mut alphas = [U256::ZERO; 12];
+    for i in 0..12 {
+        alphas[i] = channel.draw_felt();
+    }
+
+    let composition_ood_eval = compute_btc_composition_at_z(
+        &trace_ood_evals,
+        &trace_ood_evals_next,
+        z,
+        trace_gen,
+        trace_len as u64,
+        &public_inputs,
+        &alphas,
+    );
+
+    // Step 5: Composition polynomial on LDE
+    on_progress(ProveProgress {
+        stage: "compose",
+        detail: "Computing composition polynomial on LDE",
+        percent: 50,
+    });
+
+    let composition_lde = evaluate_btc_composition_on_lde(
+        &[&trace_lde_0, &trace_lde_1, &trace_lde_2, &trace_lde_3, &trace_lde_4],
+        &lde_domain,
+        trace_gen,
+        trace_len as u64,
+        &public_inputs,
+        &alphas,
+    );
+
+    let composition_tree = commit_column(&composition_lde);
+    let composition_commitment = composition_tree.root();
+    channel.commit(composition_commitment);
+
+    // Step 6: FRI protocol
+    on_progress(ProveProgress {
+        stage: "fri",
+        detail: "Running FRI protocol",
+        percent: 65,
+    });
+
+    let num_fri_layers = log_lde_size as usize - 2;
+    let fri_commitment = fri_commit(
+        &composition_lde,
+        &mut channel,
+        log_lde_size,
+        num_fri_layers,
+    );
+
+    let query_indices = channel.draw_queries(num_queries, lde_size);
+
+    on_progress(ProveProgress {
+        stage: "fri",
+        detail: "Generating query proofs",
+        percent: 80,
+    });
+
+    let (query_values, query_paths, _query_path_indices) = fri_query_proofs(
+        &fri_commitment,
+        &query_indices,
+    );
+
+    let fri_layer_roots: Vec<U256> = fri_commitment.layers.iter()
+        .map(|l| l.tree.root())
+        .collect();
+
+    // Step 7: Serialize proof
+    on_progress(ProveProgress {
+        stage: "done",
+        detail: "Serializing proof",
+        percent: 95,
+    });
+
+    let serialized = SerializedProof::new_btc_lock(
+        public_inputs,
+        trace_commitment,
+        composition_commitment,
+        &fri_layer_roots,
+        trace_ood_evals,
+        trace_ood_evals_next,
+        composition_ood_eval,
+        &fri_commitment.final_poly,
+        &query_indices,
+        &query_values,
+        &query_paths,
+        num_fri_layers,
+        log_trace_len,
+    );
+
+    on_progress(ProveProgress {
+        stage: "done",
+        detail: "Proof generation complete",
+        percent: 100,
+    });
+
+    serialized
+}
+
+/// Compute BTC Lock composition polynomial value at OOD point z.
+fn compute_btc_composition_at_z(
+    trace_ood_evals: &[U256; 5],
+    trace_ood_evals_next: &[U256; 5],
+    z: U256,
+    trace_gen: U256,
+    trace_len: u64,
+    public_inputs: &[U256; 4],
+    alphas: &[U256; 12],
+) -> U256 {
+    let one = U256::from(1u64);
+    let two = U256::from(2u64);
+
+    // TC0-TC4: Immutability
+    let tc0 = BN254Field::sub(trace_ood_evals_next[0], trace_ood_evals[0]);
+    let tc1 = BN254Field::sub(trace_ood_evals_next[1], trace_ood_evals[1]);
+    let tc2 = BN254Field::sub(trace_ood_evals_next[2], trace_ood_evals[2]);
+    let tc3 = BN254Field::sub(trace_ood_evals_next[3], trace_ood_evals[3]);
+    let tc4 = BN254Field::sub(trace_ood_evals_next[4], trace_ood_evals[4]);
+
+    // TC5: lock_amount * amount_inv - 1
+    let tc5 = BN254Field::sub(BN254Field::mul(trace_ood_evals[0], trace_ood_evals[1]), one);
+
+    // TC6: timelock_delta * delta_inv - 1
+    let tc6 = BN254Field::sub(BN254Field::mul(trace_ood_evals[2], trace_ood_evals[3]), one);
+
+    // TC7: (script_type - 1) * (script_type - 2)
+    let tc7 = BN254Field::mul(
+        BN254Field::sub(trace_ood_evals[4], one),
+        BN254Field::sub(trace_ood_evals[4], two),
+    );
+
+    // Transition zerofier
+    let z_n = BN254Field::pow(z, U256::from(trace_len));
+    let zerofier_num = BN254Field::sub(z_n, one);
+    let g_last = BN254Field::pow(trace_gen, U256::from(trace_len - 1));
+    let zerofier_den = BN254Field::sub(z, g_last);
+    let zerofier = BN254Field::div(zerofier_num, zerofier_den);
+
+    let tq0 = BN254Field::div(tc0, zerofier);
+    let tq1 = BN254Field::div(tc1, zerofier);
+    let tq2 = BN254Field::div(tc2, zerofier);
+    let tq3 = BN254Field::div(tc3, zerofier);
+    let tq4 = BN254Field::div(tc4, zerofier);
+    let tq5 = BN254Field::div(tc5, zerofier);
+    let tq6 = BN254Field::div(tc6, zerofier);
+    let tq7 = BN254Field::div(tc7, zerofier);
+
+    // Boundary constraints
+    let trace_first = one;
+    let den_first = BN254Field::sub(z, trace_first);
+    let den_last = BN254Field::sub(z, g_last);
+
+    let expected_delta = BN254Field::sub(public_inputs[1], public_inputs[2]);
+
+    let bq0 = BN254Field::div(BN254Field::sub(trace_ood_evals[0], public_inputs[0]), den_first);
+    let bq1 = BN254Field::div(BN254Field::sub(trace_ood_evals[2], expected_delta), den_first);
+    let bq2 = BN254Field::div(BN254Field::sub(trace_ood_evals[4], public_inputs[3]), den_first);
+    let bq3 = BN254Field::div(BN254Field::sub(trace_ood_evals[0], public_inputs[0]), den_last);
+
+    // Combine: 8 TC + 4 BC
+    let mut comp = BN254Field::mul(alphas[0], tq0);
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[1], tq1));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[2], tq2));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[3], tq3));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[4], tq4));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[5], tq5));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[6], tq6));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[7], tq7));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[8], bq0));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[9], bq1));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[10], bq2));
+    comp = BN254Field::add(comp, BN254Field::mul(alphas[11], bq3));
 
     comp
 }

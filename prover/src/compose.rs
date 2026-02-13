@@ -6,7 +6,6 @@
 
 use alloy_primitives::U256;
 use crate::field::BN254Field;
-use crate::poseidon::PoseidonHasher;
 
 /// Evaluate the composition polynomial at given LDE domain points.
 ///
