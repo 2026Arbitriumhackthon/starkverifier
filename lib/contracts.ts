@@ -6,7 +6,11 @@ import { arbitrumSepolia } from "./chains";
  * Contract addresses on Arbitrum Sepolia
  */
 
-// STARK Verifier (with security checks: Merkle + cross-layer + index verification)
+// STARK Verifier v4 (Keccak + BTC Lock + Sharpe ratio, Stylus)
+export const STARK_VERIFIER_V4_ADDRESS =
+  "0x4709cc3862280597855a6986b13f1f1ccb309ff9" as const;
+
+// STARK Verifier v1 (Poseidon, legacy)
 export const STARK_VERIFIER_ADDRESS =
   "0x572318f371e654d8f3b18209b9b6ae766326ef46" as const;
 
@@ -112,6 +116,36 @@ export const STARK_VERIFIER_ABI = [
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "verifyBtcLockProof",
+    inputs: [
+      { name: "publicInputs", type: "uint256[]" },
+      { name: "commitments", type: "uint256[]" },
+      { name: "oodValues", type: "uint256[]" },
+      { name: "friFinalPoly", type: "uint256[]" },
+      { name: "queryValues", type: "uint256[]" },
+      { name: "queryPaths", type: "uint256[]" },
+      { name: "queryMetadata", type: "uint256[]" },
+    ],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "verifySharpeProof",
+    inputs: [
+      { name: "publicInputs", type: "uint256[]" },
+      { name: "commitments", type: "uint256[]" },
+      { name: "oodValues", type: "uint256[]" },
+      { name: "friFinalPoly", type: "uint256[]" },
+      { name: "queryValues", type: "uint256[]" },
+      { name: "queryPaths", type: "uint256[]" },
+      { name: "queryMetadata", type: "uint256[]" },
+    ],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
 ] as const;
 
 /**
@@ -156,7 +190,7 @@ export const getStarkVerifierContract = () =>
   getContract({
     client,
     chain: arbitrumSepolia,
-    address: STARK_VERIFIER_ADDRESS,
+    address: STARK_VERIFIER_V4_ADDRESS,
     abi: STARK_VERIFIER_ABI,
   });
 

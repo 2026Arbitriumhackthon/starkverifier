@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   getStarkVerifierContract,
-  STARK_VERIFIER_ADDRESS,
+  STARK_VERIFIER_V4_ADDRESS,
   type StarkProofJSON,
 } from "@/lib/contracts";
 import { client } from "@/lib/client";
@@ -182,7 +182,7 @@ export function StarkPipeline() {
       const tx = prepareTransaction({
         client,
         chain: arbitrumSepolia,
-        to: STARK_VERIFIER_ADDRESS,
+        to: STARK_VERIFIER_V4_ADDRESS,
         data: calldata,
         gas: BigInt(40_000_000),
         maxFeePerGas: BigInt(100_000_000), // 0.1 gwei
