@@ -8,6 +8,10 @@ description = "Off-chain STARK prover for Fibonacci computation (generates proof
 [lib]
 name = "stark_prover"
 path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
 
 [[bin]]
 name = "stark-prover"
