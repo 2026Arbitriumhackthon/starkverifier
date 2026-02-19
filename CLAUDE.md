@@ -48,9 +48,9 @@ wasm-pack build --target web --features wasm --no-default-features  # WASM build
 
 The codebase has four parts:
 
-**`contracts/stylus/`** — Rust no_std on-chain STARK verifier targeting `wasm32-unknown-unknown` via Stylus SDK 0.9. Uses Keccak256 (native precompile) for Merkle verification (`src/merkle.rs`) and Fiat-Shamir channel. Full STARK verification (`src/stark/`) with AIR constraints, FRI protocol. Entry point: `src/lib.rs` with `#[entrypoint]` macro on `StarkVerifier`. On-chain functions: `verifyStarkProof(7 × uint256[]) → bool` (Fibonacci), `verifyBtcLockProof(7 × uint256[]) → bool` (BTC Lock). BTC Lock AIR: 5 columns, 8 transition constraints, 4 boundary constraints, 12 alphas.
+**`contracts/stylus/`** — Rust no_std on-chain STARK verifier targeting `wasm32-unknown-unknown` via Stylus SDK 0.9. Uses Keccak256 (native precompile) for Merkle verification (`src/merkle.rs`) and Fiat-Shamir channel. Full STARK verification (`src/stark/`) with AIR constraints, FRI protocol. Entry point: `src/lib.rs` with `#[entrypoint]` macro on `StarkVerifier`. On-chain functions: `verifyStarkProof(7 × uint256[]) → bool` (Fibonacci), `verifyBtcLockProof(7 × uint256[]) → bool` (BTC Lock), `verifySharpeProof(7 × uint256[]) → bool` (Sharpe ratio). BTC Lock AIR: 5 columns, 8 transition constraints, 4 boundary constraints, 12 alphas. Sharpe AIR: 6 columns, transition + boundary constraints for Sharpe^2 computation.
 
-**`prover/`** — Off-chain STARK prover (Rust). Structured as lib + bin: `src/lib.rs` exposes `prove_fibonacci()` / `prove_btc_lock()` with progress variants. CLI via `src/main.rs` (feature `cli`, `--mode fibonacci|btclock`). WASM wrapper via `src/wasm.rs` (feature `wasm`). Generates proofs for Fibonacci computation and BTC Lock verification.
+**`prover/`** — Off-chain STARK prover (Rust). Structured as lib + bin: `src/lib.rs` exposes `prove_fibonacci()` / `prove_btc_lock()` / `prove_sharpe()` with progress variants. CLI via `src/main.rs` (feature `cli`, `--mode fibonacci|btclock|sharpe`). WASM wrapper via `src/wasm.rs` (feature `wasm`). Generates proofs for Fibonacci computation, BTC Lock verification, and Sharpe ratio verification.
 
 **`contracts/solidity/`** — Foundry project with Solidity Poseidon/Merkle contracts for gas comparison. `src/Poseidon.sol` is a ~24K line unrolled Poseidon using `addmod`/`mulmod`.
 
@@ -60,6 +60,7 @@ The codebase has four parts:
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
+| STARK Verifier v4 (Keccak + BTC Lock + Sharpe, Stylus) | `0x4709cc3862280597855a6986b13f1f1ccb309ff9` | Fibonacci + BTC Lock + Sharpe ratio STARK verification |
 | STARK Verifier v3 (Keccak + BTC Lock, Stylus) | `0xbbc1a7c1df3f63052960ec38e2e578cf3bf28934` | Fibonacci + BTC Lock STARK verification |
 | STARK Verifier v2 (Keccak, Stylus) | `0xefcc033b0743565fb444307e35bf7b104220da00` | Fibonacci-only STARK verification (~1.04M gas) |
 | STARK Verifier v1 (Poseidon, Stylus) | `0x572318f371e654d8f3b18209b9b6ae766326ef46` | Legacy v1 (~31.9M gas) |
@@ -94,16 +95,31 @@ verifyBtcLockProof(
 ) → bool
 ```
 
+### Sharpe Ratio Proof Interface
+
+```
+verifySharpeProof(
+    publicInputs: uint256[],    // [num_trades, scale, sharpe_sq_scaled, trace_hash]
+    commitments: uint256[],     // [trace_root, comp_root, fri_roots...]
+    oodValues: uint256[],       // [6 trace(z), 6 trace(zg), comp(z)] = 13 values
+    friFinalPoly: uint256[],    // Final polynomial coefficients
+    queryValues: uint256[],     // Flattened query data
+    queryPaths: uint256[],      // Flattened Merkle paths
+    queryMetadata: uint256[],   // [num_queries, num_fri_layers, log_trace_len, indices...]
+) → bool
+```
+
 ## Key Technical Details
 
 - **Hash function**: Keccak256 (native Stylus precompile) for FRI Merkle + Fiat-Shamir
 - **BN254 prime**: `21888242871839275222246405745257275088548364400416034343698204186575808495617`
 - **Chain**: Arbitrum Sepolia (421614)
 - **Gas**: STARK verification (fib-8, 4 queries): ~1.04M gas (v2 Keccak), ~31.9M gas (v1 Poseidon)
+- **Gas**: Sharpe ratio verification (4 queries): ~1.25M gas (Bot A, 15 trades), ~1.45M gas (Bot B, 23 trades)
 - TypeScript path alias: `@/*` maps to project root
 - Solidity compiler: 0.8.24 with via_ir and Cancun EVM target
 - Rust release profile: LTO, stripped, panic=abort, opt-level=z, codegen-units=1
-- WASM size: 16.6KB (v3 w/ BTC Lock), 13.9KB (v2 Fib-only), ~23.6KB (v1 Poseidon)
+- WASM size: 19.2KB (v4 w/ Sharpe), 16.6KB (v3 w/ BTC Lock), 13.9KB (v2 Fib-only), ~23.6KB (v1 Poseidon)
 - Stylus SDK ABI naming: snake_case Rust → camelCase Solidity
 
 ## Environment Variables
