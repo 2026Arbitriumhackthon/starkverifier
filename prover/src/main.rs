@@ -16,9 +16,9 @@ use stark_prover::proof;
 #[cfg(feature = "cli")]
 #[derive(Parser, Debug)]
 #[command(name = "stark-prover")]
-#[command(about = "Generate STARK proofs for Fibonacci or BTC Lock verification")]
+#[command(about = "Generate STARK proofs for Fibonacci, BTC Lock, or Sharpe verification")]
 struct Args {
-    /// Proof mode: fibonacci or btclock
+    /// Proof mode: fibonacci, btclock, or sharpe
     #[arg(long, default_value = "fibonacci")]
     mode: String,
 
@@ -45,6 +45,10 @@ struct Args {
     /// Script type: 1=P2SH, 2=P2WSH (btclock mode)
     #[arg(long, default_value_t = 2)]
     script_type: u64,
+
+    /// Bot id: a or b (sharpe mode)
+    #[arg(long, default_value = "a")]
+    bot: String,
 
     /// Output format: json or hex
     #[arg(long, default_value = "json")]
@@ -108,8 +112,33 @@ fn main() {
                     progress_cb(args.verbose),
                 )
             }
+            "sharpe" => {
+                let bot = match args.bot.as_str() {
+                    "a" => stark_prover::mock_data::bot_a_aggressive_eth(),
+                    "b" => stark_prover::mock_data::bot_b_safe_hedger(),
+                    _ => {
+                        eprintln!("Unknown bot: {}. Use 'a' or 'b'.", args.bot);
+                        return;
+                    }
+                };
+
+                println!("=== STARK Prover for Sharpe Ratio ===");
+                println!("Bot: {} ({} trades)", bot.name, bot.trades.len());
+                println!("Expected Sharpe^2 * SCALE: {}", bot.expected_sharpe_sq_scaled);
+                println!("FRI queries: {}", args.num_queries);
+                println!("Blowup factor: 4");
+                println!();
+
+                let claimed = alloy_primitives::U256::from(bot.expected_sharpe_sq_scaled);
+                stark_prover::prove_sharpe_with_progress(
+                    &bot.trades,
+                    claimed,
+                    args.num_queries,
+                    progress_cb(args.verbose),
+                )
+            }
             _ => {
-                eprintln!("Unknown mode: {}. Use 'fibonacci' or 'btclock'.", args.mode);
+                eprintln!("Unknown mode: {}. Use 'fibonacci', 'btclock', or 'sharpe'.", args.mode);
                 return;
             }
         };
