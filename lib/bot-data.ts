@@ -65,3 +65,62 @@ export const BOT_B: BotProfile = {
 };
 
 export const BOTS: BotProfile[] = [BOT_A, BOT_B];
+
+/* ── Pipeline Visualization Types ─────────────────────────── */
+
+export type PipelineStepStatus = "pending" | "active" | "done" | "error";
+
+export interface PipelineStep {
+  id: number;
+  title: string;
+  subtitle: string;
+  activeDetail: string;
+  status: PipelineStepStatus;
+}
+
+const PIPELINE_STEP_DEFS: Omit<PipelineStep, "status">[] = [
+  { id: 1, title: "Load WASM", subtitle: "Initialize prover module", activeDetail: "Loading WASM prover..." },
+  { id: 2, title: "Generate Trace", subtitle: "Sharpe ratio execution trace", activeDetail: "Computing trace polynomials..." },
+  { id: 3, title: "Commit & Compose", subtitle: "Polynomial commitments + composition", activeDetail: "Running Fiat-Shamir protocol..." },
+  { id: 4, title: "FRI Protocol", subtitle: "Low-degree testing & query proofs", activeDetail: "Generating FRI query proofs..." },
+  { id: 5, title: "On-Chain Verify", subtitle: "Submit & confirm on Arbitrum", activeDetail: "Waiting for on-chain confirmation..." },
+];
+
+/**
+ * Pure function: maps (phase, progress, error) → 5 PipelineStep[] with correct statuses.
+ */
+export function derivePipelineSteps(
+  phase: PipelinePhase,
+  progress: ProofProgress | null,
+  error: string | null,
+): PipelineStep[] {
+  // Map current state to the active step number (1-5), 0 = idle
+  let activeStep = 0;
+  if (phase === "loading-wasm") activeStep = 1;
+  else if (phase === "proving" && progress) {
+    const stage = progress.stage;
+    if (stage === "trace") activeStep = 2;
+    else if (stage === "commit" || stage === "compose") activeStep = 3;
+    else if (stage === "fri") activeStep = 4;
+    else if (stage === "done") activeStep = 5; // serializing proof
+  } else if (phase === "sending-tx" || phase === "confirming") activeStep = 5;
+
+  return PIPELINE_STEP_DEFS.map((def) => {
+    let status: PipelineStepStatus = "pending";
+    if (error && def.id === activeStep) status = "error";
+    else if (def.id < activeStep) status = "done";
+    else if (def.id === activeStep) status = "active";
+
+    // Use live detail from prover when available
+    let activeDetail = def.activeDetail;
+    if (def.id === activeStep && phase === "proving" && progress) {
+      activeDetail = progress.detail;
+    } else if (def.id === 5 && phase === "sending-tx") {
+      activeDetail = "Sending transaction...";
+    } else if (def.id === 5 && phase === "confirming") {
+      activeDetail = "Waiting for on-chain confirmation...";
+    }
+
+    return { ...def, activeDetail, status };
+  });
+}

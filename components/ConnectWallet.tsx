@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { ConnectButton } from "thirdweb/react";
 import { createWallet } from "thirdweb/wallets";
 import { client } from "@/lib/client";
@@ -12,7 +13,7 @@ const wallets = [
   createWallet("walletConnect"),
 ];
 
-export function ConnectWallet() {
+function ConnectWalletInner() {
   return (
     <ConnectButton
       client={client}
@@ -35,3 +36,7 @@ export function ConnectWallet() {
     />
   );
 }
+
+export const ConnectWallet = dynamic(() => Promise.resolve(ConnectWalletInner), {
+  ssr: false,
+});

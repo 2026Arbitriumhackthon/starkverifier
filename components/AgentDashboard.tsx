@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useActiveAccount } from "thirdweb/react";
 import { prepareContractCall, sendTransaction, waitForReceipt } from "thirdweb";
 import { toast } from "sonner";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, LayoutDashboard, GitBranch } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -14,7 +14,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentCard } from "@/components/AgentCard";
+import { ProofPipeline } from "@/components/ProofPipeline";
 import { getStarkVerifierContract } from "@/lib/contracts";
 import type { StarkProofJSON } from "@/lib/contracts";
 import { formatGas, getArbitrumReceiptWithL1Gas } from "@/lib/gas-utils";
@@ -148,77 +150,103 @@ export function AgentDashboard() {
         </div>
       )}
 
-      {/* Bot Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-        {BOTS.map((bot) => (
-          <AgentCard
-            key={bot.id}
-            bot={bot}
-            isVerifying={verifyingBotId === bot.id}
-            phase={verifyingBotId === bot.id ? phase : "idle"}
-            progress={verifyingBotId === bot.id ? progress : null}
-            onVerify={() => handleVerify(bot)}
-          />
-        ))}
-      </div>
+      <Tabs defaultValue="dashboard" className="max-w-4xl mx-auto">
+        <TabsList className="mx-auto">
+          <TabsTrigger value="dashboard">
+            <LayoutDashboard className="h-4 w-4" />
+            Agent Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="pipeline">
+            <GitBranch className="h-4 w-4" />
+            Proof Pipeline
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Verification History */}
-      {records.length > 0 && (
-        <div className="max-w-4xl mx-auto space-y-4">
-          <h4 className="text-lg font-semibold">Verification History</h4>
-          <div className="rounded-lg border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Bot</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Gas Used</TableHead>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Transaction</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {records.map((rec, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="font-medium">
-                      Bot {rec.botId.toUpperCase()} — {rec.botName}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={rec.verified ? "default" : "destructive"}
-                        className={
-                          rec.verified
-                            ? "bg-green-500/10 text-green-500 border-green-500/20"
-                            : ""
-                        }
-                      >
-                        {rec.verified ? "Verified" : "Failed"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-mono">
-                      {formatGas(rec.gasUsed)}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(rec.timestamp).toLocaleTimeString()}
-                    </TableCell>
-                    <TableCell>
-                      <a
-                        href={`${ARBISCAN_TX_URL}/${rec.txHash}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                      >
-                        {rec.txHash.slice(0, 10)}...
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+        <TabsContent value="dashboard" className="space-y-8 mt-6">
+          {/* Bot Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {BOTS.map((bot) => (
+              <AgentCard
+                key={bot.id}
+                bot={bot}
+                isVerifying={verifyingBotId === bot.id}
+                phase={verifyingBotId === bot.id ? phase : "idle"}
+                progress={verifyingBotId === bot.id ? progress : null}
+                onVerify={() => handleVerify(bot)}
+              />
+            ))}
           </div>
-        </div>
-      )}
+
+          {/* Verification History */}
+          {records.length > 0 && (
+            <div className="space-y-4">
+              <h4 className="text-lg font-semibold">Verification History</h4>
+              <div className="rounded-lg border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Bot</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Gas Used</TableHead>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Transaction</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {records.map((rec, i) => (
+                      <TableRow key={i}>
+                        <TableCell className="font-medium">
+                          Bot {rec.botId.toUpperCase()} — {rec.botName}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={rec.verified ? "default" : "destructive"}
+                            className={
+                              rec.verified
+                                ? "bg-green-500/10 text-green-500 border-green-500/20"
+                                : ""
+                            }
+                          >
+                            {rec.verified ? "Verified" : "Failed"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono">
+                          {formatGas(rec.gasUsed)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {new Date(rec.timestamp).toLocaleTimeString()}
+                        </TableCell>
+                        <TableCell>
+                          <a
+                            href={`${ARBISCAN_TX_URL}/${rec.txHash}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {rec.txHash.slice(0, 10)}...
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="pipeline" className="mt-6">
+          <ProofPipeline
+            phase={verifyingBotId ? phase : "idle"}
+            progress={verifyingBotId ? progress : null}
+            error={error}
+            records={records}
+            verifyingBotId={verifyingBotId}
+            onVerify={handleVerify}
+          />
+        </TabsContent>
+      </Tabs>
     </section>
   );
 }
