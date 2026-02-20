@@ -1,4 +1,5 @@
 import { ConnectWallet } from "@/components/ConnectWallet";
+import { AgentDashboard } from "@/components/AgentDashboard";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Github, ExternalLink } from "lucide-react";
 
@@ -65,15 +66,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Coming Soon — Dashboard */}
-      <section className="container mx-auto px-4 py-16">
-        <div className="max-w-2xl mx-auto text-center space-y-4">
-          <h3 className="text-2xl font-bold">ProofScore Dashboard</h3>
-          <p className="text-muted-foreground">
-            Agent evaluation dashboard, proof pipeline visualization, and gas comparison charts coming soon.
-          </p>
-        </div>
-      </section>
+      {/* Agent Dashboard */}
+      <AgentDashboard />
 
       {/* Why Stylus Section */}
       <section className="border-t">
