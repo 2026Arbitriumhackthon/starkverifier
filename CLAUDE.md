@@ -99,7 +99,7 @@ verifyBtcLockProof(
 
 ```
 verifySharpeProof(
-    publicInputs: uint256[],    // [num_trades, scale, sharpe_sq_scaled, trace_hash]
+    publicInputs: uint256[],    // [trade_count, total_return, sharpe_sq_scaled, merkle_root]
     commitments: uint256[],     // [trace_root, comp_root, fri_roots...]
     oodValues: uint256[],       // [6 trace(z), 6 trace(zg), comp(z)] = 13 values
     friFinalPoly: uint256[],    // Final polynomial coefficients
