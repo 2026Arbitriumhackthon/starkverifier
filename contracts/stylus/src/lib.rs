@@ -42,50 +42,6 @@ sol_storage! {
 
 #[public]
 impl StarkVerifier {
-    /// Verify a full STARK proof of Fibonacci computation.
-    pub fn verify_stark_proof(
-        &self,
-        public_inputs: Vec<U256>,
-        commitments: Vec<U256>,
-        ood_values: Vec<U256>,
-        fri_final_poly: Vec<U256>,
-        query_values: Vec<U256>,
-        query_paths: Vec<U256>,
-        query_metadata: Vec<U256>,
-    ) -> bool {
-        stark::verify_stark(
-            &public_inputs,
-            &commitments,
-            &ood_values,
-            &fri_final_poly,
-            &query_values,
-            &query_paths,
-            &query_metadata,
-        )
-    }
-
-    /// Verify a full STARK proof of BTC lock verification.
-    pub fn verify_btc_lock_proof(
-        &self,
-        public_inputs: Vec<U256>,
-        commitments: Vec<U256>,
-        ood_values: Vec<U256>,
-        fri_final_poly: Vec<U256>,
-        query_values: Vec<U256>,
-        query_paths: Vec<U256>,
-        query_metadata: Vec<U256>,
-    ) -> bool {
-        stark::verify_btc_lock_stark(
-            &public_inputs,
-            &commitments,
-            &ood_values,
-            &fri_final_poly,
-            &query_values,
-            &query_paths,
-            &query_metadata,
-        )
-    }
-
     /// Verify a full STARK proof of Sharpe ratio verification.
     pub fn verify_sharpe_proof(
         &self,

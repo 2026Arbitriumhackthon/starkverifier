@@ -38,6 +38,18 @@ fn sharpe_scale_fp() -> Fp {
     Fp::from_u256(U256::from(10000u64))
 }
 
+/// Compute the transition constraint zerofier at OOD point z.
+/// Z_T(z) = (z^n - 1) / (z - g^{n-1})
+pub fn transition_zerofier_at(z: Fp, trace_len: u64, trace_generator: Fp) -> Fp {
+    let z_n = BN254Field::pow(z, U256::from(trace_len));
+    let numerator = BN254Field::sub(z_n, Fp::ONE);
+
+    let g_last = BN254Field::pow(trace_generator, U256::from(trace_len - 1));
+    let denominator = BN254Field::sub(z, g_last);
+
+    BN254Field::div(numerator, denominator)
+}
+
 /// Evaluate transition constraints at a given point.
 ///
 /// current/next: [return, return_sq, cum_ret, cum_sq, trade_count, dataset_commitment]
