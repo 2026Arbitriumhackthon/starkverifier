@@ -38,6 +38,60 @@ export class StarkProverWasm {
         }
     }
     /**
+     * Generate a Sharpe proof from return_bps array (no commitment).
+     *
+     * returns_bps: array of trade returns in basis points
+     * num_queries: number of FRI queries
+     * callback: JS function(stage, detail, percent) for progress updates
+     * @param {Int32Array} returns_bps
+     * @param {number} num_queries
+     * @param {Function} callback
+     * @returns {string}
+     */
+    generateSharpeProofFromReturns(returns_bps, num_queries, callback) {
+        let deferred2_0;
+        let deferred2_1;
+        try {
+            const ptr0 = passArray32ToWasm0(returns_bps, wasm.__wbindgen_malloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ret = wasm.starkproverwasm_generateSharpeProofFromReturns(this.__wbg_ptr, ptr0, len0, num_queries, callback);
+            deferred2_0 = ret[0];
+            deferred2_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred2_0, deferred2_1, 1);
+        }
+    }
+    /**
+     * Generate a Sharpe proof from return_bps array with a dataset commitment.
+     *
+     * returns_bps: array of trade returns in basis points
+     * dataset_commitment_hex: "0x..." hex string of the dataset commitment (or empty for no commitment)
+     * num_queries: number of FRI queries
+     * callback: JS function(stage, detail, percent) for progress updates
+     * @param {Int32Array} returns_bps
+     * @param {string} dataset_commitment_hex
+     * @param {number} num_queries
+     * @param {Function} callback
+     * @returns {string}
+     */
+    generateSharpeProofWithCommitment(returns_bps, dataset_commitment_hex, num_queries, callback) {
+        let deferred3_0;
+        let deferred3_1;
+        try {
+            const ptr0 = passArray32ToWasm0(returns_bps, wasm.__wbindgen_malloc);
+            const len0 = WASM_VECTOR_LEN;
+            const ptr1 = passStringToWasm0(dataset_commitment_hex, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+            const len1 = WASM_VECTOR_LEN;
+            const ret = wasm.starkproverwasm_generateSharpeProofWithCommitment(this.__wbg_ptr, ptr0, len0, ptr1, len1, num_queries, callback);
+            deferred3_0 = ret[0];
+            deferred3_1 = ret[1];
+            return getStringFromWasm0(ret[0], ret[1]);
+        } finally {
+            wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+        }
+    }
+    /**
      * Generate a Sharpe proof with progress updates via a JS callback.
      * @param {string} bot_id
      * @param {number} num_queries
@@ -118,6 +172,14 @@ function getStringFromWasm0(ptr, len) {
     return decodeText(ptr, len);
 }
 
+let cachedUint32ArrayMemory0 = null;
+function getUint32ArrayMemory0() {
+    if (cachedUint32ArrayMemory0 === null || cachedUint32ArrayMemory0.byteLength === 0) {
+        cachedUint32ArrayMemory0 = new Uint32Array(wasm.memory.buffer);
+    }
+    return cachedUint32ArrayMemory0;
+}
+
 let cachedUint8ArrayMemory0 = null;
 function getUint8ArrayMemory0() {
     if (cachedUint8ArrayMemory0 === null || cachedUint8ArrayMemory0.byteLength === 0) {
@@ -133,6 +195,13 @@ function handleError(f, args) {
         const idx = addToExternrefTable0(e);
         wasm.__wbindgen_exn_store(idx);
     }
+}
+
+function passArray32ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 4, 4) >>> 0;
+    getUint32ArrayMemory0().set(arg, ptr / 4);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
 }
 
 function passStringToWasm0(arg, malloc, realloc) {
@@ -205,6 +274,7 @@ let wasmModule, wasm;
 function __wbg_finalize_init(instance, module) {
     wasm = instance.exports;
     wasmModule = module;
+    cachedUint32ArrayMemory0 = null;
     cachedUint8ArrayMemory0 = null;
     wasm.__wbindgen_start();
     return wasm;
@@ -277,7 +347,9 @@ async function __wbg_init(module_or_path) {
         }
     }
 
-
+    if (module_or_path === undefined) {
+        module_or_path = new URL('stark_prover_bg.wasm', import.meta.url);
+    }
     const imports = __wbg_get_imports();
 
     if (typeof module_or_path === 'string' || (typeof Request === 'function' && module_or_path instanceof Request) || (typeof URL === 'function' && module_or_path instanceof URL)) {

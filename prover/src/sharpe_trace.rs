@@ -23,7 +23,7 @@ pub struct SharpeTrace {
     pub col_cumulative_return: Vec<U256>,  // Col 2: sum of returns up to row i
     pub col_cumulative_sq: Vec<U256>,      // Col 3: sum of return_sq up to row i
     pub col_trade_count: Vec<U256>,        // Col 4: constant N (actual trade count)
-    pub col_dataset_commitment: Vec<U256>, // Col 5: placeholder (Fp::ZERO)
+    pub col_dataset_commitment: Vec<U256>, // Col 5: dataset commitment (constant per trace)
     pub len: usize,                        // Padded power-of-2 length
     pub actual_trade_count: usize,         // Actual number of trades
 }
@@ -33,7 +33,7 @@ impl SharpeTrace {
     ///
     /// The trace is padded to the next power of 2.
     /// Padding rows have return=0, return_sq=0, and cumulative values carry forward.
-    pub fn generate(trades: &[GmxTradeRecord]) -> Self {
+    pub fn generate(trades: &[GmxTradeRecord], dataset_commitment: Option<U256>) -> Self {
         let actual_count = trades.len();
         assert!(actual_count >= 2, "need at least 2 trades");
 
@@ -41,6 +41,7 @@ impl SharpeTrace {
         let trace_len = actual_count.next_power_of_two();
 
         let n_field = U256::from(actual_count as u64);
+        let commitment_val = dataset_commitment.unwrap_or(U256::ZERO);
 
         let mut col_return = Vec::with_capacity(trace_len);
         let mut col_return_sq = Vec::with_capacity(trace_len);
@@ -65,7 +66,7 @@ impl SharpeTrace {
             col_cumulative_return.push(cum_ret);
             col_cumulative_sq.push(cum_sq);
             col_trade_count.push(n_field);
-            col_dataset_commitment.push(U256::ZERO); // placeholder
+            col_dataset_commitment.push(commitment_val);
         }
 
         // Fill padding rows (zero return, cumulative values preserved)
@@ -75,7 +76,7 @@ impl SharpeTrace {
             col_cumulative_return.push(cum_ret); // carry forward
             col_cumulative_sq.push(cum_sq);      // carry forward
             col_trade_count.push(n_field);
-            col_dataset_commitment.push(U256::ZERO);
+            col_dataset_commitment.push(commitment_val);
         }
 
         SharpeTrace {
@@ -133,7 +134,7 @@ mod tests {
     #[test]
     fn test_bot_a_trace_generation() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         assert_eq!(trace.actual_trade_count, 15);
         assert_eq!(trace.len, 16); // 15 padded to 16
@@ -151,7 +152,7 @@ mod tests {
     #[test]
     fn test_bot_b_trace_generation() {
         let bot = bot_b_safe_hedger();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         assert_eq!(trace.actual_trade_count, 23);
         assert_eq!(trace.len, 32); // 23 padded to 32
@@ -161,7 +162,7 @@ mod tests {
     #[test]
     fn test_padding_rows() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         // Padding row (index 15) should have zero return
         assert_eq!(trace.col_return[15], U256::ZERO);
@@ -184,7 +185,7 @@ mod tests {
     #[test]
     fn test_cumulative_return_consistency() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         // Verify cumulative return is actually cumulative
         for i in 1..trace.actual_trade_count {
@@ -202,7 +203,7 @@ mod tests {
     #[test]
     fn test_cumulative_sq_consistency() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         for i in 1..trace.actual_trade_count {
             let expected = BN254Field::add(
@@ -219,7 +220,7 @@ mod tests {
     #[test]
     fn test_return_sq_is_square() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         for i in 0..trace.len {
             let expected = BN254Field::mul(trace.col_return[i], trace.col_return[i]);
@@ -233,7 +234,7 @@ mod tests {
     #[test]
     fn test_first_row_boundary() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         // BC0: cum_ret[0] = return[0]
         assert_eq!(trace.col_cumulative_return[0], trace.col_return[0]);
@@ -245,7 +246,7 @@ mod tests {
     #[test]
     fn test_trade_count_constant() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
 
         let expected = U256::from(15u64);
         for i in 0..trace.len {
@@ -256,7 +257,7 @@ mod tests {
     #[test]
     fn test_sharpe_sq_scaled_bot_a() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
         let computed = trace.compute_sharpe_sq_scaled();
         assert_eq!(computed, U256::from(bot.expected_sharpe_sq_scaled));
     }
@@ -264,7 +265,7 @@ mod tests {
     #[test]
     fn test_sharpe_sq_scaled_bot_b() {
         let bot = bot_b_safe_hedger();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
         let computed = trace.compute_sharpe_sq_scaled();
         assert_eq!(computed, U256::from(bot.expected_sharpe_sq_scaled));
     }
@@ -272,7 +273,7 @@ mod tests {
     #[test]
     fn test_public_inputs() {
         let bot = bot_a_aggressive_eth();
-        let trace = SharpeTrace::generate(&bot.trades);
+        let trace = SharpeTrace::generate(&bot.trades, None);
         let claimed = U256::from(bot.expected_sharpe_sq_scaled);
         let pi = trace.public_inputs(claimed);
 

@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [features]
 default = ["cli"]
-cli = ["clap"]
+cli = ["clap", "reqwest", "tokio", "serde_json"]
 wasm = ["wasm-bindgen", "js-sys", "getrandom"]
 
 [dependencies]
@@ -31,6 +31,9 @@ tiny-keccak = { version = "2.0", features = ["keccak"] }
 
 # CLI-only dependencies
 clap = { version = "4", features = ["derive"], optional = true }
+reqwest = { version = "0.11", features = ["json"], optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+serde_json = { version = "1", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }

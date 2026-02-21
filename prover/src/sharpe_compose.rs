@@ -10,7 +10,7 @@
 //!   TC1: ret_sq = ret * ret
 //!   TC2: cum_sq_next = cum_sq + ret_sq_next
 //!   TC3: trade_count_next = trade_count (immutability)
-//!   TC4: 0 (dataset_commitment placeholder)
+//!   TC4: dataset_commitment_next = dataset_commitment (immutability)
 //!
 //! Boundary constraints:
 //!   BC0: cum_ret[0] = ret[0]                                    (at first row)
@@ -57,7 +57,7 @@ pub fn evaluate_sharpe_composition_on_lde(
         let c2 = trace_lde[2][i]; // cum_ret
         let c3 = trace_lde[3][i]; // cum_sq
         let c4 = trace_lde[4][i]; // trade_count
-        // c5 = trace_lde[5][i]; // dataset_commitment (not used in constraints)
+        let c5 = trace_lde[5][i]; // dataset_commitment
 
         // Next row values
         let next_i = (i + blowup as usize) % lde_size;
@@ -66,6 +66,7 @@ pub fn evaluate_sharpe_composition_on_lde(
         let c2_next = trace_lde[2][next_i]; // cum_ret_next
         let c3_next = trace_lde[3][next_i]; // cum_sq_next
         let c4_next = trace_lde[4][next_i]; // trade_count_next
+        let c5_next = trace_lde[5][next_i]; // dataset_commitment_next
 
         // TC0: cum_ret_next - cum_ret - ret_next = 0
         let tc0 = BN254Field::sub(c2_next, BN254Field::add(c2, c0_next));
@@ -79,8 +80,8 @@ pub fn evaluate_sharpe_composition_on_lde(
         // TC3: trade_count_next - trade_count = 0 (immutability)
         let tc3 = BN254Field::sub(c4_next, c4);
 
-        // TC4: 0 (placeholder for dataset_commitment)
-        let tc4 = U256::ZERO;
+        // TC4: dataset_commitment_next - dataset_commitment = 0 (immutability)
+        let tc4 = BN254Field::sub(c5_next, c5);
 
         // Transition zerofier: (x^N - 1) / (x - g^(N-1))
         let x_n = BN254Field::pow(x, U256::from(trace_len));

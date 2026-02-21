@@ -3,6 +3,8 @@
 export const memory: WebAssembly.Memory;
 export const __wbg_starkproverwasm_free: (a: number, b: number) => void;
 export const starkproverwasm_generateSharpeProof: (a: number, b: number, c: number, d: number) => [number, number];
+export const starkproverwasm_generateSharpeProofFromReturns: (a: number, b: number, c: number, d: number, e: any) => [number, number];
+export const starkproverwasm_generateSharpeProofWithCommitment: (a: number, b: number, c: number, d: number, e: number, f: number, g: any) => [number, number];
 export const starkproverwasm_generateSharpeProofWithProgress: (a: number, b: number, c: number, d: number, e: any) => [number, number];
 export const starkproverwasm_new: () => number;
 export const __wbindgen_exn_store: (a: number) => void;

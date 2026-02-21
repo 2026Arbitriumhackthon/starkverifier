@@ -33,6 +33,25 @@ export const STARK_VERIFIER_ABI = [
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "verifySharpeProofWithReceipt",
+    inputs: [
+      { name: "publicInputs", type: "uint256[]" },
+      { name: "commitments", type: "uint256[]" },
+      { name: "oodValues", type: "uint256[]" },
+      { name: "friFinalPoly", type: "uint256[]" },
+      { name: "queryValues", type: "uint256[]" },
+      { name: "queryPaths", type: "uint256[]" },
+      { name: "queryMetadata", type: "uint256[]" },
+      { name: "blockHash", type: "uint256" },
+      { name: "receiptsRoot", type: "uint256[]" },
+      { name: "receiptRlp", type: "uint256[]" },
+      { name: "receiptRlpLen", type: "uint256" },
+    ],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
 ] as const;
 
 /**

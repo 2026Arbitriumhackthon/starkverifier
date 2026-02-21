@@ -16,8 +16,7 @@ export async function loadWasmProver() {
   if (!loadPromise) {
     loadPromise = (async () => {
       const mod = await import("@/prover/pkg/stark_prover");
-      const wasmUrl = new URL("@/prover/pkg/stark_prover_bg.wasm", import.meta.url);
-      await mod.default(wasmUrl);
+      await mod.default("/stark_prover_bg.wasm");
       return mod;
     })();
   }
@@ -53,6 +52,41 @@ export async function generateSharpeProof(
     } else {
       jsonStr = prover.generateSharpeProof(botId, numQueries);
     }
+  } finally {
+    prover.free();
+  }
+
+  return JSON.parse(jsonStr) as StarkProofJSON;
+}
+
+/**
+ * Generate a Sharpe ratio STARK proof from return_bps array with optional dataset commitment.
+ *
+ * @param returnsBps - Array of trade returns in basis points
+ * @param datasetCommitmentHex - Hex string of dataset commitment (e.g., "0x1234...") or empty
+ * @param numQueries - Number of FRI queries (default 4)
+ * @param onProgress - Optional callback for progress updates
+ * @returns Parsed StarkProofJSON ready for on-chain verification
+ */
+export async function generateSharpeProofWithCommitment(
+  returnsBps: number[],
+  datasetCommitmentHex: string,
+  numQueries: number,
+  onProgress?: (progress: ProofProgress) => void
+): Promise<StarkProofJSON> {
+  const mod = await loadWasmProver();
+  const prover = new mod.StarkProverWasm();
+
+  let jsonStr: string;
+  try {
+    jsonStr = prover.generateSharpeProofWithCommitment(
+      new Int32Array(returnsBps),
+      datasetCommitmentHex,
+      numQueries,
+      (stage: string, detail: string, percent: number) => {
+        onProgress?.({ stage, detail, percent });
+      }
+    );
   } finally {
     prover.free();
   }
