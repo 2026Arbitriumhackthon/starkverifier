@@ -83,11 +83,11 @@ export async function fetchReceiptProof(
   const rawReceiptsHex = await fetchRawReceipts(rpcUrl, receiptResp.blockNumber as string);
 
   if (rawReceiptsHex) {
-    console.log(`[ReceiptProof] Using debug_getRawReceipts (${rawReceiptsHex.length} receipts)`);
+    // Using debug_getRawReceipts (exact bytes from node → guaranteed correct root)
     const rawReceipts = rawReceiptsHex.map((hex: string) => hexToBytes(hex));
     trieProof = buildReceiptTrieFromRawBytes(rawReceipts, txIndex);
   } else {
-    console.log("[ReceiptProof] debug_getRawReceipts unavailable, falling back to re-encoding");
+    // debug_getRawReceipts unavailable, falling back to re-encoding
     const blockReceipts = await rpcCallArray(rpcUrl, "eth_getBlockReceipts", [
       receiptResp.blockNumber,
     ]);
@@ -106,13 +106,13 @@ export async function fetchReceiptProof(
     trieProof.proofNodes,
   );
 
-  // If client-side verification fails, the trie root may not match on-chain receiptsRoot.
-  // Log a warning but don't hard-fail: the on-chain verifier is the final authority.
+  // If client-side verification fails, the on-chain call will also fail (wasting gas).
+  // Fail early to avoid unnecessary transaction costs.
   if (verifiedValue === null) {
-    console.warn(
-      "Client-side MPT proof verification returned null. " +
-      "Computed root may differ from on-chain receiptsRoot. " +
-      `Computed: 0x${bytesToHex(trieProof.root)}, Expected: ${receiptsRoot}`
+    throw new Error(
+      "Client-side MPT proof verification failed. " +
+      `Computed root: 0x${bytesToHex(trieProof.root)}, Expected: ${receiptsRoot}. ` +
+      "The receipt trie root does not match the block's receiptsRoot."
     );
   }
 
@@ -299,15 +299,13 @@ export async function fetchReceiptHashes(
   const unique = [...new Set(txHashes)];
   const hashCache = new Map<string, Uint8Array>();
 
-  console.log(`[ReceiptProof] Fetching receipt hashes for ${unique.length} unique txs...`);
+  // Fetching receipt hashes for unique txs
 
   // Fetch receipts in parallel (batches of 5 to avoid RPC rate limits)
   const BATCH_SIZE = 5;
   for (let i = 0; i < unique.length; i += BATCH_SIZE) {
     const batch = unique.slice(i, i + BATCH_SIZE);
-    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-    const totalBatches = Math.ceil(unique.length / BATCH_SIZE);
-    console.log(`[ReceiptProof] Batch ${batchNum}/${totalBatches} (${batch.length} txs)...`);
+    // Process batch
 
     const promises = batch.map(async (txHash) => {
       const receipt = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHash]);
@@ -339,10 +337,7 @@ export async function fetchReceiptHashes(
 
   const aggregateCommitment = computeAggregateCommitment(receiptHashes);
 
-  console.log(
-    `[ReceiptProof] Fetched ${unique.length} unique receipt hashes ` +
-    `(${txHashes.length} trades), aggregate=${aggregateCommitment.slice(0, 18)}...`
-  );
+  // Receipt hashes fetched and aggregated
 
   return { receiptHashes, aggregateCommitment };
 }

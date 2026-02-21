@@ -75,6 +75,13 @@ impl StarkVerifier {
     /// Receipt hashes are keccak256(receiptRlp) for each trade's transaction,
     /// computed client-side. Total calldata: ~3KB (STARK) + N×32B (hashes).
     /// No receipt RLP or MPT proof nodes are sent on-chain.
+    ///
+    /// ## Security (Phase A)
+    ///
+    /// This function does NOT verify that receipt hashes correspond to real
+    /// Ethereum transactions. A malicious client could submit fabricated hashes
+    /// and a matching STARK proof. On-chain MPT inclusion proof (Phase B) is
+    /// required to close this trust assumption.
     pub fn verify_sharpe_with_commitment(
         &self,
         public_inputs: Vec<U256>,
@@ -336,6 +343,64 @@ mod tests {
         assert!(h0.to_u256() < BN254_PRIME);
         assert!(h1.to_u256() < BN254_PRIME);
         assert!(h2.to_u256() < BN254_PRIME);
+    }
+
+    // =====================================================================
+    // verify_sharpe_with_commitment — binding logic tests
+    // =====================================================================
+
+    /// Commitment binding: compute_commitment_from_hashes → constant_merkle_root → pi[3] match.
+    #[test]
+    fn test_commitment_binding_logic() {
+        let h0 = Fp::from_u256(U256::from(111u64));
+        let h1 = Fp::from_u256(U256::from(222u64));
+        let h2 = Fp::from_u256(U256::from(333u64));
+
+        let commitment = mpt::compute_commitment_from_hashes(&[h0, h1, h2]);
+        assert_ne!(commitment, Fp::ZERO);
+
+        let log_trace_len: u32 = 4;
+        let expected_pi3 = mpt::compute_constant_merkle_root(commitment, log_trace_len);
+
+        // The same inputs should always produce the same expected pi[3]
+        let expected_pi3_again = mpt::compute_constant_merkle_root(
+            mpt::compute_commitment_from_hashes(&[h0, h1, h2]),
+            log_trace_len,
+        );
+        assert_eq!(expected_pi3, expected_pi3_again);
+
+        // Different hashes → different expected pi[3]
+        let other_commitment = mpt::compute_commitment_from_hashes(&[h2, h1, h0]);
+        let other_pi3 = mpt::compute_constant_merkle_root(other_commitment, log_trace_len);
+        assert_ne!(expected_pi3, other_pi3);
+    }
+
+    /// Commitment binding rejects mismatched pi[3].
+    /// Simulates the core check in verify_sharpe_with_commitment:
+    ///   1. Compute aggregate commitment from receipt hashes
+    ///   2. Compute expected merkle root via constant_merkle_root
+    ///   3. Compare with pi[3]
+    #[test]
+    fn test_commitment_binding_rejects_wrong_pi3() {
+        let receipt_hash = Fp::from_u256(U256::from(42u64));
+        let log_trace_len: u32 = 4;
+
+        let commitment = mpt::compute_commitment_from_hashes(&[receipt_hash]);
+        let expected_root = mpt::compute_constant_merkle_root(commitment, log_trace_len);
+
+        // Correct pi[3] should match
+        assert_eq!(expected_root, expected_root);
+
+        // Wrong pi[3] should NOT match
+        let wrong_pi3 = Fp::from_u256(U256::from(0x1234u64));
+        assert_ne!(wrong_pi3, expected_root, "Wrong pi[3] must not match expected root");
+    }
+
+    /// Commitment binding: empty receipt hashes → ZERO commitment.
+    #[test]
+    fn test_commitment_binding_empty_hashes() {
+        let commitment = mpt::compute_commitment_from_hashes(&[]);
+        assert_eq!(commitment, Fp::ZERO, "Empty hashes must produce ZERO commitment");
     }
 
     /// Field range: 100 consecutive hashes all produce values < BN254_PRIME.

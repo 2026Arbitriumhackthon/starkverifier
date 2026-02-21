@@ -259,17 +259,6 @@ export function WalletProver() {
         return val;
       });
 
-      const starkU256Count =
-        proof.publicInputs.length + proof.commitments.length +
-        proof.oodValues.length + proof.friFinalPoly.length +
-        proof.queryValues.length + proof.queryPaths.length +
-        proof.queryMetadata.length;
-      const totalCalldataEst = (starkU256Count + receiptHashesBigInt.length) * 32;
-      console.log(
-        `[ProofPipeline] Phase A calldata: STARK=${starkU256Count * 32}B, ` +
-        `receiptHashes=${receiptHashesBigInt.length * 32}B, Total=${totalCalldataEst}B`
-      );
-
       const tx = prepareContractCall({
         contract,
         method: "verifySharpeWithCommitment",
@@ -592,7 +581,7 @@ export function WalletProver() {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Sharpe Ratio</span>
+                <span className="text-muted-foreground">Sharpe Ratio (est.)</span>
                 <span className={`font-mono font-medium ${
                   result.sharpeRatio >= 1 ? "text-green-500" :
                   result.sharpeRatio >= 0 ? "text-orange-500" : "text-red-500"
