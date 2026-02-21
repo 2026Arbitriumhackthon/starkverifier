@@ -6,9 +6,9 @@ import { arbitrumSepolia } from "./chains";
  * Contract addresses on Arbitrum Sepolia
  */
 
-// STARK Verifier v5 (Keccak + Sharpe + MPT receipt verification, Stylus)
+// STARK Verifier v6 (Keccak + Sharpe + Phase A commitment binding, Stylus)
 export const STARK_VERIFIER_V4_ADDRESS =
-  "0x5f83f682b9b77614e2b90d75092abc97b49ae378" as const;
+  "0x365344c7057eee248c986e4170e143f0449d943e" as const;
 
 // EvaluationRegistry (Phase 2 — agent evaluation on-chain records)
 export const EVALUATION_REGISTRY_ADDRESS =
@@ -50,6 +50,22 @@ export const STARK_VERIFIER_ABI = [
       { name: "receiptProofNodesLen", type: "uint256" },
       { name: "receiptKey", type: "uint256[]" },
       { name: "receiptKeyLen", type: "uint256" },
+    ],
+    outputs: [{ name: "valid", type: "bool" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "verifySharpeWithCommitment",
+    inputs: [
+      { name: "publicInputs", type: "uint256[]" },
+      { name: "commitments", type: "uint256[]" },
+      { name: "oodValues", type: "uint256[]" },
+      { name: "friFinalPoly", type: "uint256[]" },
+      { name: "queryValues", type: "uint256[]" },
+      { name: "queryPaths", type: "uint256[]" },
+      { name: "queryMetadata", type: "uint256[]" },
+      { name: "receiptHashes", type: "uint256[]" },
     ],
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "nonpayable",
