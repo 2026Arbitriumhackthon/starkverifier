@@ -247,10 +247,6 @@ mod tests {
             Fp::from_u256(U256::from(42u64)),
         );
 
-        eprintln!("Verifier keccak_hash_two(0, 0)     = 0x{:064x}", h0.to_u256());
-        eprintln!("Verifier keccak_hash_two(1, 2)     = 0x{:064x}", h1.to_u256());
-        eprintln!("Verifier keccak_hash_two(p-1, 42)  = 0x{:064x}", h2.to_u256());
-
         assert!(h0.to_u256() < BN254_PRIME);
         assert!(h1.to_u256() < BN254_PRIME);
         assert!(h2.to_u256() < BN254_PRIME);
