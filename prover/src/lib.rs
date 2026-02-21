@@ -17,6 +17,9 @@ pub mod sharpe_trace;
 #[cfg(feature = "wasm")]
 pub mod wasm;
 
+#[cfg(feature = "cli")]
+pub mod gmx_fetcher;
+
 use alloy_primitives::U256;
 
 use crate::channel::Channel;

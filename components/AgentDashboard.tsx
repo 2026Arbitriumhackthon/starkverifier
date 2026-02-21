@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useActiveAccount } from "thirdweb/react";
 import { prepareContractCall, sendTransaction, waitForReceipt } from "thirdweb";
 import { toast } from "sonner";
-import { ExternalLink, LayoutDashboard, GitBranch } from "lucide-react";
+import { ExternalLink, LayoutDashboard, GitBranch, Wallet } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentCard } from "@/components/AgentCard";
 import { ProofPipeline } from "@/components/ProofPipeline";
+import { WalletProver } from "@/components/WalletProver";
 import { getStarkVerifierContract } from "@/lib/contracts";
 import type { StarkProofJSON } from "@/lib/contracts";
 import { formatGas, getArbitrumReceiptWithL1Gas } from "@/lib/gas-utils";
@@ -189,6 +190,10 @@ export function AgentDashboard() {
             <GitBranch className="h-4 w-4" />
             Proof Pipeline
           </TabsTrigger>
+          <TabsTrigger value="wallet">
+            <Wallet className="h-4 w-4" />
+            Live Wallet
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-8 mt-6">
@@ -274,6 +279,13 @@ export function AgentDashboard() {
             records={records}
             verifyingBotId={verifyingBotId}
             onVerify={handleVerify}
+          />
+        </TabsContent>
+
+        <TabsContent value="wallet" className="mt-6">
+          <WalletProver
+            records={records}
+            onRecordAdd={(record) => setRecords((prev) => [record, ...prev])}
           />
         </TabsContent>
       </Tabs>

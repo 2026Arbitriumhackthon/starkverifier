@@ -59,3 +59,43 @@ export async function generateSharpeProof(
 
   return JSON.parse(jsonStr) as StarkProofJSON;
 }
+
+/**
+ * Generate a Sharpe ratio STARK proof from raw return_bps values.
+ *
+ * @param returnsBps - Int32Array of signed basis-point returns per trade
+ * @param numQueries - number of FRI queries
+ * @param onProgress - optional callback for proof generation progress
+ * @returns Parsed StarkProofJSON ready for on-chain verification
+ */
+export async function generateSharpeProofFromReturns(
+  returnsBps: Int32Array,
+  numQueries: number,
+  onProgress?: (progress: ProofProgress) => void
+): Promise<StarkProofJSON> {
+  const mod = await loadWasmProver();
+  const prover = new mod.StarkProverWasm();
+
+  let jsonStr: string;
+  try {
+    if (onProgress) {
+      jsonStr = prover.generateSharpeProofFromReturnsWithProgress(
+        returnsBps,
+        numQueries,
+        (stage: string, detail: string, percent: number) => {
+          onProgress({ stage, detail, percent });
+        }
+      );
+    } else {
+      jsonStr = prover.generateSharpeProofFromReturns(returnsBps, numQueries);
+    }
+  } finally {
+    prover.free();
+  }
+
+  const result = JSON.parse(jsonStr);
+  if (result.error) {
+    throw new Error(result.error);
+  }
+  return result as StarkProofJSON;
+}
