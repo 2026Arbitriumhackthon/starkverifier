@@ -15,22 +15,22 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "STARK Stylus Verifier | 10-18x Gas Savings",
+  title: "ProofScore | On-Chain Agent Evaluation",
   description:
-    "Mini STARK Verifier demonstrating 10-18x gas savings on Arbitrum Stylus compared to Solidity. Built for Arbitrum APAC Mini Hackathon.",
+    "STARK-verified trading agent evaluation on Arbitrum Stylus. Sharpe ratio proofs with zero-knowledge guarantees.",
   keywords: [
     "STARK",
     "Stylus",
     "Arbitrum",
-    "Poseidon",
-    "Merkle",
+    "Keccak256",
+    "Sharpe Ratio",
     "ZK",
-    "Gas Optimization",
+    "Agent Evaluation",
   ],
   authors: [{ name: "hodduk" }],
   openGraph: {
-    title: "STARK Stylus Verifier",
-    description: "10-18x gas savings for STARK verification on Arbitrum Stylus",
+    title: "ProofScore | On-Chain Agent Evaluation",
+    description: "STARK-verified trading agent evaluation on Arbitrum Stylus",
     type: "website",
   },
 };

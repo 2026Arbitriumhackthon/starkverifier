@@ -1,9 +1,4 @@
 import { ConnectWallet } from "@/components/ConnectWallet";
-import { StarkPipeline } from "@/components/StarkPipeline";
-import { VerifyPanel } from "@/components/VerifyPanel";
-import { GasComparison } from "@/components/GasComparison";
-import { BenchmarkTable } from "@/components/BenchmarkTable";
-import { L2ComputationChart } from "@/components/L2ComputationChart";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Github, ExternalLink } from "lucide-react";
 
@@ -21,7 +16,7 @@ export default function Home() {
               <div>
                 <h1 className="text-xl font-bold">STARK Stylus Verifier</h1>
                 <p className="text-xs text-muted-foreground">
-                  First On-Chain STARK Verifier on Arbitrum
+                  ProofScore — On-Chain Agent Evaluation
                 </p>
               </div>
             </div>
@@ -43,14 +38,14 @@ export default function Home() {
               Arbitrum APAC Mini Hackathon 2026
             </Badge>
             <h2 className="text-4xl sm:text-5xl font-bold tracking-tight">
-              First On-Chain{" "}
+              On-Chain{" "}
               <span className="bg-gradient-to-r from-orange-500 to-purple-600 bg-clip-text text-transparent">
-                STARK Verifier
+                Agent Evaluation
               </span>
             </h2>
             <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-              Generate proofs in-browser, verify on Arbitrum Stylus.
-              Full STARK pipeline with Poseidon hash, Merkle commitments, and FRI protocol.
+              Verify trading agent performance with STARK proofs on Arbitrum Stylus.
+              Sharpe ratio verification with zero-knowledge guarantees.
             </p>
             <div className="flex items-center justify-center gap-4 pt-4">
               <div className="flex items-center gap-2 text-sm">
@@ -59,43 +54,24 @@ export default function Home() {
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <div className="w-3 h-3 rounded-full bg-purple-500" />
-                <span>Solidity (EVM)</span>
+                <span>STARK Proofs</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <div className="w-3 h-3 rounded-full bg-green-500" />
-                <span>31.9M Gas Verified</span>
+                <span>Sharpe Ratio</span>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* STARK Pipeline - Main Feature */}
-      <section className="container mx-auto px-4 py-8">
-        <div className="max-w-3xl mx-auto">
-          <StarkPipeline />
-        </div>
-      </section>
-
-      {/* Poseidon/Merkle Benchmark Section */}
-      <section className="border-t">
-        <div className="container mx-auto px-4 py-8">
-          <h3 className="text-2xl font-bold text-center mb-6">
-            Poseidon / Merkle Benchmark
-          </h3>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column */}
-            <div className="space-y-6">
-              <VerifyPanel />
-              <GasComparison />
-            </div>
-
-            {/* Right Column */}
-            <div className="space-y-6">
-              <BenchmarkTable />
-              <L2ComputationChart />
-            </div>
-          </div>
+      {/* Coming Soon — Dashboard */}
+      <section className="container mx-auto px-4 py-16">
+        <div className="max-w-2xl mx-auto text-center space-y-4">
+          <h3 className="text-2xl font-bold">ProofScore Dashboard</h3>
+          <p className="text-muted-foreground">
+            Agent evaluation dashboard, proof pipeline visualization, and gas comparison charts coming soon.
+          </p>
         </div>
       </section>
 
@@ -103,7 +79,7 @@ export default function Home() {
       <section className="border-t">
         <div className="container mx-auto px-4 py-12">
           <h3 className="text-2xl font-bold text-center mb-8">
-            Why Stylus Wins for STARK
+            Why Stylus for STARK
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="p-6 rounded-xl border bg-card">
@@ -121,7 +97,7 @@ export default function Home() {
               </div>
               <h4 className="font-semibold mb-2">Native Loops</h4>
               <p className="text-sm text-muted-foreground">
-                No gas metering overhead per iteration. Poseidon&apos;s 65 rounds execute natively.
+                No gas metering overhead per iteration. Keccak256 native precompile for Merkle + FRI.
               </p>
             </div>
             <div className="p-6 rounded-xl border bg-card">
@@ -145,12 +121,10 @@ export default function Home() {
             {[
               "Arbitrum Stylus",
               "Rust",
-              "Solidity",
               "Next.js 16",
               "thirdweb v5",
-              "Poseidon BN254",
+              "Keccak256",
               "FRI Protocol",
-              "Foundry",
               "shadcn/ui",
             ].map((tech) => (
               <Badge key={tech} variant="secondary" className="text-sm py-1 px-3">

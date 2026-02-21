@@ -1,7 +1,7 @@
 //! Proof Serialization
 //!
 //! Serializes STARK proof data into the flattened Vec<U256> format
-//! expected by the on-chain verifier's `verify_stark_proof` function.
+//! expected by the on-chain verifier's `verify_sharpe_proof` function.
 
 use alloy_primitives::U256;
 
@@ -17,122 +17,6 @@ pub struct SerializedProof {
 }
 
 impl SerializedProof {
-    /// Create a new serialized proof.
-    ///
-    /// # Arguments
-    /// * `public_inputs` - [first_a, first_b, claimed_result]
-    /// * `trace_commitment` - Merkle root of trace evaluations
-    /// * `composition_commitment` - Merkle root of composition evaluations
-    /// * `fri_layer_roots` - Merkle roots for each FRI layer
-    /// * `trace_ood_evals` - [a(z), b(z)] at OOD point
-    /// * `trace_ood_evals_next` - [a(zg), b(zg)] at OOD point * generator
-    /// * `composition_ood_eval` - C(z) composition at OOD point
-    /// * `fri_final_poly` - Final low-degree polynomial coefficients
-    /// * `query_indices` - Query indices in LDE domain
-    /// * `query_values` - Flattened query values
-    /// * `query_paths` - Flattened Merkle auth paths
-    /// * `num_fri_layers` - Number of FRI layers
-    /// * `log_trace_len` - Log2 of trace length
-    pub fn new(
-        public_inputs: [U256; 3],
-        trace_commitment: U256,
-        composition_commitment: U256,
-        fri_layer_roots: &[U256],
-        trace_ood_evals: [U256; 2],
-        trace_ood_evals_next: [U256; 2],
-        composition_ood_eval: U256,
-        fri_final_poly: &[U256],
-        query_indices: &[usize],
-        query_values: &[U256],
-        query_paths: &[U256],
-        num_fri_layers: usize,
-        log_trace_len: u32,
-    ) -> Self {
-        // commitments: [trace_root, comp_root, fri_roots...]
-        let mut commitments = Vec::with_capacity(2 + fri_layer_roots.len());
-        commitments.push(trace_commitment);
-        commitments.push(composition_commitment);
-        commitments.extend_from_slice(fri_layer_roots);
-
-        // ood_values: [a(z), b(z), a(zg), b(zg), comp(z)]
-        let ood_values = vec![
-            trace_ood_evals[0],
-            trace_ood_evals[1],
-            trace_ood_evals_next[0],
-            trace_ood_evals_next[1],
-            composition_ood_eval,
-        ];
-
-        // query_metadata: [num_queries, num_fri_layers, log_trace_len, idx_0, idx_1, ...]
-        let num_queries = query_indices.len();
-        let mut query_metadata = Vec::with_capacity(3 + num_queries);
-        query_metadata.push(U256::from(num_queries as u64));
-        query_metadata.push(U256::from(num_fri_layers as u64));
-        query_metadata.push(U256::from(log_trace_len as u64));
-        for &idx in query_indices {
-            query_metadata.push(U256::from(idx as u64));
-        }
-
-        SerializedProof {
-            public_inputs: public_inputs.to_vec(),
-            commitments,
-            ood_values,
-            fri_final_poly: fri_final_poly.to_vec(),
-            query_values: query_values.to_vec(),
-            query_paths: query_paths.to_vec(),
-            query_metadata,
-        }
-    }
-
-    /// Create a new serialized BTC Lock proof.
-    ///
-    /// OOD values layout: [5 trace at z, 5 trace at zg, 1 composition] = 11 elements.
-    pub fn new_btc_lock(
-        public_inputs: [U256; 4],
-        trace_commitment: U256,
-        composition_commitment: U256,
-        fri_layer_roots: &[U256],
-        trace_ood_evals: [U256; 5],
-        trace_ood_evals_next: [U256; 5],
-        composition_ood_eval: U256,
-        fri_final_poly: &[U256],
-        query_indices: &[usize],
-        query_values: &[U256],
-        query_paths: &[U256],
-        num_fri_layers: usize,
-        log_trace_len: u32,
-    ) -> Self {
-        let mut commitments = Vec::with_capacity(2 + fri_layer_roots.len());
-        commitments.push(trace_commitment);
-        commitments.push(composition_commitment);
-        commitments.extend_from_slice(fri_layer_roots);
-
-        // ood_values: 5 trace at z + 5 trace at zg + 1 comp = 11
-        let mut ood_values = Vec::with_capacity(11);
-        ood_values.extend_from_slice(&trace_ood_evals);
-        ood_values.extend_from_slice(&trace_ood_evals_next);
-        ood_values.push(composition_ood_eval);
-
-        let num_queries = query_indices.len();
-        let mut query_metadata = Vec::with_capacity(3 + num_queries);
-        query_metadata.push(U256::from(num_queries as u64));
-        query_metadata.push(U256::from(num_fri_layers as u64));
-        query_metadata.push(U256::from(log_trace_len as u64));
-        for &idx in query_indices {
-            query_metadata.push(U256::from(idx as u64));
-        }
-
-        SerializedProof {
-            public_inputs: public_inputs.to_vec(),
-            commitments,
-            ood_values,
-            fri_final_poly: fri_final_poly.to_vec(),
-            query_values: query_values.to_vec(),
-            query_paths: query_paths.to_vec(),
-            query_metadata,
-        }
-    }
-
     /// Create a new serialized Sharpe proof.
     ///
     /// OOD values layout: [6 trace at z, 6 trace at zg, 1 composition] = 13 elements.

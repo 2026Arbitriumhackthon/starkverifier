@@ -1,6 +1,6 @@
 //! BN254 Field Arithmetic (shared with on-chain verifier)
 //!
-//! Exact same implementation as contracts/stylus/src/poseidon/field.rs
+//! Exact same implementation as contracts/stylus/src/field.rs
 //! to ensure prover and verifier are compatible.
 
 use alloy_primitives::U256;

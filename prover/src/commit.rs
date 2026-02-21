@@ -108,17 +108,6 @@ impl MerkleTree {
     }
 }
 
-/// Build a Merkle tree from two columns of trace evaluations.
-/// Each leaf is keccak_hash_two(col_a[i], col_b[i]).
-pub fn commit_trace(col_a: &[U256], col_b: &[U256]) -> MerkleTree {
-    assert_eq!(col_a.len(), col_b.len());
-    let leaves: Vec<U256> = col_a.iter()
-        .zip(col_b.iter())
-        .map(|(a, b)| keccak_hash_two(*a, *b))
-        .collect();
-    MerkleTree::build(&leaves)
-}
-
 /// Build a Merkle tree from multiple columns of trace evaluations.
 /// Each leaf is the chain-hash of all columns: keccak(keccak(...keccak(c0, c1), c2)..., cN).
 pub fn commit_trace_multi(cols: &[&[U256]]) -> MerkleTree {
@@ -208,16 +197,4 @@ mod tests {
         assert!(indices[1]); // h23 is right child
     }
 
-    #[test]
-    fn test_commit_trace() {
-        let col_a = vec![U256::from(1u64), U256::from(2u64)];
-        let col_b = vec![U256::from(3u64), U256::from(4u64)];
-        let tree = commit_trace(&col_a, &col_b);
-
-        let leaf0 = keccak_hash_two(U256::from(1u64), U256::from(3u64));
-        let leaf1 = keccak_hash_two(U256::from(2u64), U256::from(4u64));
-        let expected_root = keccak_hash_two(leaf0, leaf1);
-
-        assert_eq!(tree.root(), expected_root);
-    }
 }
