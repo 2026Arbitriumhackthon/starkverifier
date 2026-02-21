@@ -153,6 +153,7 @@ export function WalletProver() {
     tradeCount: number;
     totalReturnBps: number;
     receiptCount: number;
+    sharpeRatio: number;
   } | null>(null);
 
   const network = NETWORKS.find((n) => n.id === selectedNetwork)!;
@@ -213,6 +214,7 @@ export function WalletProver() {
         network.rpcUrl,
         walletAddress,
         network.id,
+        100, // max trades — keeps calldata under MetaMask limit (~3KB hashes + ~20KB STARK)
       );
       setTradeData(trades);
 
@@ -296,6 +298,15 @@ export function WalletProver() {
         transactionHash: txResult.transactionHash,
       });
 
+      // Compute Sharpe ratio from raw trade data
+      // Sharpe = mean / stddev, where returns are in basis points
+      const N = trades.returnsBps.length;
+      const sum = trades.returnsBps.reduce((a, b) => a + b, 0);
+      const mean = sum / N;
+      const sumSqDev = trades.returnsBps.reduce((a, r) => a + (r - mean) ** 2, 0);
+      const variance = sumSqDev / N;
+      const sharpeRatio = variance > 0 ? mean / Math.sqrt(variance) : 0;
+
       setResult({
         txHash: receipt.transactionHash,
         verified: receipt.status === "success",
@@ -304,11 +315,12 @@ export function WalletProver() {
         tradeCount: trades.tradeCount,
         totalReturnBps: trades.totalReturnBps,
         receiptCount: receiptHashes.length,
+        sharpeRatio,
       });
 
       if (receipt.status === "success") {
         toast.success(
-          `Wallet verified! ${trades.tradeCount} trades, ${receiptHashes.length} receipts, Gas: ${formatGas(receipt.gasUsed)}`
+          `Wallet verified! ${trades.tradeCount} trades, Sharpe: ${sharpeRatio.toFixed(2)}, Gas: ${formatGas(receipt.gasUsed)}`
         );
       } else {
         toast.error("Verification transaction reverted");
@@ -577,6 +589,15 @@ export function WalletProver() {
                   result.totalReturnBps >= 0 ? "text-green-500" : "text-red-500"
                 }`}>
                   {result.totalReturnBps >= 0 ? "+" : ""}{result.totalReturnBps} bps
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Sharpe Ratio</span>
+                <span className={`font-mono font-medium ${
+                  result.sharpeRatio >= 1 ? "text-green-500" :
+                  result.sharpeRatio >= 0 ? "text-orange-500" : "text-red-500"
+                }`}>
+                  {result.sharpeRatio.toFixed(4)}
                 </span>
               </div>
               <div className="flex items-center justify-between">
