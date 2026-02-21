@@ -226,6 +226,116 @@ export function encodeProofNodes(
   };
 }
 
+// ── Phase A: Multi-receipt commitment ─────────────────────
+
+/**
+ * Keccak hash chain matching on-chain keccak_hash_two.
+ *
+ * Encoding: each value as big-endian 32 bytes, concatenate two → keccak256 → mod BN254.
+ * This MUST produce identical output to the on-chain Stylus keccak_hash_two.
+ */
+function keccakHashTwo(a: bigint, b: bigint): bigint {
+  const buf = new Uint8Array(64);
+  buf.set(bigIntToBytes32BE(a), 0);
+  buf.set(bigIntToBytes32BE(b), 32);
+  const hash = keccak_256(buf);
+  const raw = bytesToBigInt(hash);
+  return raw % BN254_PRIME;
+}
+
+function bigIntToBytes32BE(value: bigint): Uint8Array {
+  const hex = value.toString(16).padStart(64, "0");
+  const bytes = new Uint8Array(32);
+  for (let i = 0; i < 32; i++) {
+    bytes[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
+
+/**
+ * Compute aggregate commitment from multiple receipt hashes.
+ *
+ * Uses left-fold keccak hash chain (matches on-chain compute_commitment_from_hashes):
+ *   N=1: commitment = h[0] mod BN254
+ *   N=2: commitment = keccak_hash_two(h[0], h[1])
+ *   N≥3: commitment = keccak_hash_two(...keccak_hash_two(h[0], h[1]), h[2]), ...)
+ */
+export function computeAggregateCommitment(receiptHashes: Uint8Array[]): string {
+  if (receiptHashes.length === 0) {
+    return "0x" + "0".repeat(64);
+  }
+
+  const fps = receiptHashes.map((h) => bytesToBigInt(h) % BN254_PRIME);
+
+  let commitment: bigint;
+  if (fps.length === 1) {
+    commitment = fps[0];
+  } else {
+    commitment = keccakHashTwo(fps[0], fps[1]);
+    for (let i = 2; i < fps.length; i++) {
+      commitment = keccakHashTwo(commitment, fps[i]);
+    }
+  }
+
+  return "0x" + commitment.toString(16).padStart(64, "0");
+}
+
+/**
+ * Fetch receipt hashes for multiple transactions.
+ *
+ * For each unique txHash:
+ *   1. Fetch transaction receipt via eth_getTransactionReceipt
+ *   2. RLP-encode the receipt (standard Ethereum format)
+ *   3. Compute receiptHash = keccak256(receiptRlp)
+ *
+ * Returns receipt hashes in the same order as input txHashes.
+ * Duplicate txHashes are de-duplicated (same tx → same receipt hash).
+ */
+export async function fetchReceiptHashes(
+  rpcUrl: string,
+  txHashes: string[],
+): Promise<{ receiptHashes: Uint8Array[]; aggregateCommitment: string }> {
+  // De-duplicate txHashes while preserving order
+  const unique = [...new Set(txHashes)];
+  const hashCache = new Map<string, Uint8Array>();
+
+  // Fetch receipts in parallel (batches of 10 to avoid RPC rate limits)
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < unique.length; i += BATCH_SIZE) {
+    const batch = unique.slice(i, i + BATCH_SIZE);
+    const promises = batch.map(async (txHash) => {
+      const receipt = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHash]);
+      if (!receipt) {
+        throw new Error(`No receipt found for tx: ${txHash}`);
+      }
+      const formatted = formatReceiptForRlp(receipt);
+      const receiptRlp = rlpEncodeReceipt(formatted);
+      const receiptHash = keccak_256(receiptRlp);
+      return { txHash, receiptHash };
+    });
+    const results = await Promise.all(promises);
+    for (const { txHash, receiptHash } of results) {
+      hashCache.set(txHash, receiptHash);
+    }
+  }
+
+  // Build ordered array matching input txHashes
+  const receiptHashes = txHashes.map((tx) => {
+    const hash = hashCache.get(tx);
+    if (!hash) throw new Error(`Missing receipt hash for ${tx}`);
+    return hash;
+  });
+
+  const aggregateCommitment = computeAggregateCommitment(receiptHashes);
+
+  console.log(
+    `[ReceiptProof] Fetched ${unique.length} unique receipt hashes ` +
+    `(${txHashes.length} trades), aggregate=${aggregateCommitment.slice(0, 18)}...`
+  );
+
+  return { receiptHashes, aggregateCommitment };
+}
+
 // ── Utility functions ────────────────────────────────────
 
 function hexToBytes(hex: string): Uint8Array {

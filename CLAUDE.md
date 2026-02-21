@@ -58,7 +58,7 @@ The codebase has four parts:
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
-| STARK Verifier v5 (Keccak + Sharpe + MPT, Stylus) | `0x5f83f682b9b77614e2b90d75092abc97b49ae378` | Sharpe ratio STARK + receipt MPT verification |
+| STARK Verifier v6 (Keccak + Sharpe + Phase A commitment, Stylus) | `0x365344c7057eee248c986e4170e143f0449d943e` | Sharpe ratio STARK + multi-receipt commitment binding |
 | EvaluationRegistry (Solidity) | TBD | On-chain agent evaluation records |
 
 ## Sharpe Ratio Proof Interface

@@ -65,6 +65,69 @@ impl StarkVerifier {
         )
     }
 
+    /// Verify a STARK proof with commitment binding (Phase A — no large calldata).
+    ///
+    /// On-chain verification:
+    ///   1. Compute aggregate commitment from receipt hashes (keccak hash chain)
+    ///   2. Verify STARK proof (Sharpe ratio arithmetic)
+    ///   3. Cross-check: pi[3] == merkle_root of constant commitment column
+    ///
+    /// Receipt hashes are keccak256(receiptRlp) for each trade's transaction,
+    /// computed client-side. Total calldata: ~3KB (STARK) + N×32B (hashes).
+    /// No receipt RLP or MPT proof nodes are sent on-chain.
+    pub fn verify_sharpe_with_commitment(
+        &self,
+        public_inputs: Vec<U256>,
+        commitments: Vec<U256>,
+        ood_values: Vec<U256>,
+        fri_final_poly: Vec<U256>,
+        query_values: Vec<U256>,
+        query_paths: Vec<U256>,
+        query_metadata: Vec<U256>,
+        receipt_hashes: Vec<U256>,
+    ) -> bool {
+        // Step 1: Compute aggregate commitment from receipt hashes
+        if receipt_hashes.is_empty() {
+            return false;
+        }
+        let fps: Vec<Fp> = receipt_hashes.iter().map(|h| Fp::from_u256(*h)).collect();
+        let expected_commitment = mpt::compute_commitment_from_hashes(&fps);
+
+        if expected_commitment == Fp::ZERO {
+            return false;
+        }
+
+        // Step 2: Verify STARK proof
+        let stark_valid = stark::verify_sharpe_stark(
+            &public_inputs,
+            &commitments,
+            &ood_values,
+            &fri_final_poly,
+            &query_values,
+            &query_paths,
+            &query_metadata,
+        );
+
+        if !stark_valid {
+            return false;
+        }
+
+        // Step 3: Cross-check — pi[3] == merkle_root of constant commitment column
+        if public_inputs.len() < 4 || query_metadata.len() < 3 {
+            return false;
+        }
+
+        let pi3 = Fp::from_u256(public_inputs[3]);
+        let log_trace_len = query_metadata[2].as_limbs()[0] as u32;
+
+        let expected_merkle_root = mpt::compute_constant_merkle_root(
+            expected_commitment,
+            log_trace_len,
+        );
+
+        pi3 == expected_merkle_root
+    }
+
     /// Verify a STARK proof with receipt-based data provenance.
     ///
     /// Performs:

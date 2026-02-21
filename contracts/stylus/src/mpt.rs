@@ -196,6 +196,30 @@ pub fn compute_constant_merkle_root(leaf_value: Fp, log_size: u32) -> Fp {
     current
 }
 
+/// Compute aggregate commitment from multiple receipt hashes.
+///
+/// Uses a left-fold keccak hash chain:
+///   N=1: commitment = receipt_hashes[0]
+///   N=2: commitment = keccak_hash_two(receipt_hashes[0], receipt_hashes[1])
+///   N=3: commitment = keccak_hash_two(keccak_hash_two(h[0], h[1]), h[2])
+///   ...
+///
+/// This binds all N receipts into a single commitment value.
+/// Must produce identical output to the prover and frontend computations.
+pub fn compute_commitment_from_hashes(receipt_hashes: &[Fp]) -> Fp {
+    match receipt_hashes.len() {
+        0 => Fp::ZERO,
+        1 => receipt_hashes[0],
+        _ => {
+            let mut acc = crate::keccak_hash_two(receipt_hashes[0], receipt_hashes[1]);
+            for hash in &receipt_hashes[2..] {
+                acc = crate::keccak_hash_two(acc, *hash);
+            }
+            acc
+        }
+    }
+}
+
 /// Decode U256 words to a flat byte array, truncating to actual_len.
 pub fn decode_u256_words(words: &[U256], actual_len: usize) -> Vec<u8> {
     let mut result = Vec::with_capacity(actual_len);
@@ -451,5 +475,54 @@ mod tests {
         let words = vec![U256::from_be_bytes(word_bytes)];
         let result = decode_u256_words(&words, 3);
         assert_eq!(result, vec![0xAB, 0xCD, 0xEF]);
+    }
+
+    #[test]
+    fn test_commitment_from_hashes_empty() {
+        assert_eq!(compute_commitment_from_hashes(&[]), Fp::ZERO);
+    }
+
+    #[test]
+    fn test_commitment_from_hashes_single() {
+        let h = Fp::from_u256(U256::from(123u64));
+        assert_eq!(compute_commitment_from_hashes(&[h]), h);
+    }
+
+    #[test]
+    fn test_commitment_from_hashes_two() {
+        let h0 = Fp::from_u256(U256::from(100u64));
+        let h1 = Fp::from_u256(U256::from(200u64));
+        let expected = crate::keccak_hash_two(h0, h1);
+        assert_eq!(compute_commitment_from_hashes(&[h0, h1]), expected);
+    }
+
+    #[test]
+    fn test_commitment_from_hashes_three() {
+        let h0 = Fp::from_u256(U256::from(100u64));
+        let h1 = Fp::from_u256(U256::from(200u64));
+        let h2 = Fp::from_u256(U256::from(300u64));
+        let step1 = crate::keccak_hash_two(h0, h1);
+        let expected = crate::keccak_hash_two(step1, h2);
+        assert_eq!(compute_commitment_from_hashes(&[h0, h1, h2]), expected);
+    }
+
+    #[test]
+    fn test_commitment_from_hashes_deterministic() {
+        let hashes: Vec<Fp> = (1..=5)
+            .map(|i| Fp::from_u256(U256::from(i as u64 * 111)))
+            .collect();
+        let c1 = compute_commitment_from_hashes(&hashes);
+        let c2 = compute_commitment_from_hashes(&hashes);
+        assert_eq!(c1, c2);
+        assert_ne!(c1, Fp::ZERO);
+    }
+
+    #[test]
+    fn test_commitment_from_hashes_order_sensitive() {
+        let h0 = Fp::from_u256(U256::from(100u64));
+        let h1 = Fp::from_u256(U256::from(200u64));
+        let c1 = compute_commitment_from_hashes(&[h0, h1]);
+        let c2 = compute_commitment_from_hashes(&[h1, h0]);
+        assert_ne!(c1, c2, "Hash chain must be order-sensitive");
     }
 }
