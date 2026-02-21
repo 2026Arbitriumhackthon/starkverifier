@@ -383,24 +383,43 @@ mod tests {
             .map(|i| GmxTradeRecord::from_return_bps(pattern[i % 5]))
             .collect();
 
-        // Generate trace and compute claimed sharpe
         let trace = SharpeTrace::generate(&trades, None);
         let claimed_sharpe_sq_scaled = trace.compute_sharpe_sq_scaled();
 
-        println!("Trade count: {}", trades.len());
-        println!("Trace length (padded): {}", trace.len);
-        println!("Log trace len: {}", trace.log_len());
-        println!("Claimed sharpe_sq_scaled: {}", claimed_sharpe_sq_scaled);
-
-        // Benchmark proof generation
         let start = Instant::now();
         let proof = prove_sharpe(&trades, claimed_sharpe_sq_scaled, 4, None);
         let elapsed = start.elapsed();
 
-        println!("Proof generation time: {:.3}s ({} ms)", elapsed.as_secs_f64(), elapsed.as_millis());
-        println!("Proof public_inputs: {} fields", proof.public_inputs.len());
-        println!("Proof commitments: {} fields", proof.commitments.len());
-        println!("Proof query_values: {} fields", proof.query_values.len());
+        println!("200 trades: {:.3}s ({} ms)", elapsed.as_secs_f64(), elapsed.as_millis());
+
+        // Verify proof structure
+        assert_eq!(proof.public_inputs.len(), 4);
+        assert_eq!(proof.public_inputs[0], U256::from(200u64));
+        assert_eq!(proof.public_inputs[2], claimed_sharpe_sq_scaled);
+        assert!(proof.commitments.len() >= 2);
+        assert_eq!(proof.ood_values.len(), 13);
     }
 
+    #[test]
+    fn test_5000_trades_perf() {
+        let pattern: [i64; 5] = [100, -50, 200, -100, 150];
+        let trades: Vec<GmxTradeRecord> = (0..5000)
+            .map(|i| GmxTradeRecord::from_return_bps(pattern[i % 5]))
+            .collect();
+
+        let trace = SharpeTrace::generate(&trades, None);
+        let claimed_sharpe_sq_scaled = trace.compute_sharpe_sq_scaled();
+
+        let start = Instant::now();
+        let proof = prove_sharpe(&trades, claimed_sharpe_sq_scaled, 4, None);
+        let elapsed = start.elapsed();
+
+        println!("5000 trades: {:.3}s ({} ms)", elapsed.as_secs_f64(), elapsed.as_millis());
+
+        assert_eq!(proof.public_inputs.len(), 4);
+        assert_eq!(proof.public_inputs[0], U256::from(5000u64));
+        assert_eq!(proof.public_inputs[2], claimed_sharpe_sq_scaled);
+        assert!(proof.commitments.len() >= 2);
+        assert_eq!(proof.ood_values.len(), 13);
+    }
 }

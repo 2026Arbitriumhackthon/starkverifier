@@ -127,6 +127,52 @@ pub fn ifft(evals: &mut [U256], log_size: u32) {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fft_ifft_roundtrip() {
+        let original = vec![
+            U256::from(42u64),
+            U256::from(7u64),
+            U256::from(1337u64),
+            U256::from(0u64),
+        ];
+        let mut data = original.clone();
+        fft(&mut data, 2);
+        // After FFT, data should differ from original (not identity)
+        assert_ne!(data, original);
+        ifft(&mut data, 2);
+        assert_eq!(data, original);
+    }
+
+    #[test]
+    fn test_fft_ifft_roundtrip_large() {
+        let n = 16;
+        let original: Vec<U256> = (0..n).map(|i| U256::from(i as u64 * 31 + 5)).collect();
+        let mut data = original.clone();
+        fft(&mut data, 4);
+        ifft(&mut data, 4);
+        assert_eq!(data, original);
+    }
+
+    #[test]
+    fn test_ifft_fft_roundtrip() {
+        // Also test the reverse direction: ifft then fft
+        let original = vec![
+            U256::from(100u64),
+            U256::from(200u64),
+            U256::from(300u64),
+            U256::from(400u64),
+        ];
+        let mut data = original.clone();
+        ifft(&mut data, 2);
+        fft(&mut data, 2);
+        assert_eq!(data, original);
+    }
+}
+
 /// Get coset domain: offset * g^i for each i.
 pub fn get_coset_domain(log_size: u32, offset: U256) -> Vec<U256> {
     let size = 1usize << log_size;
