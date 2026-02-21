@@ -283,10 +283,7 @@ export function AgentDashboard() {
         </TabsContent>
 
         <TabsContent value="wallet" className="mt-6">
-          <WalletProver
-            records={records}
-            onRecordAdd={(record) => setRecords((prev) => [record, ...prev])}
-          />
+          <WalletProver />
         </TabsContent>
       </Tabs>
     </section>

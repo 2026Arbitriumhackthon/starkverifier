@@ -5,7 +5,7 @@
 //! Usage:
 //!   cargo run --features cli -- --bot a
 //!   cargo run --features cli -- --bot b --num-queries 20
-//!   cargo run --features cli -- --wallet 0x... --num-queries 4
+//!   cargo run --features cli -- --wallet 0x... --tx-hash 0x... --num-queries 4
 
 #[cfg(feature = "cli")]
 use clap::Parser;
@@ -30,6 +30,10 @@ struct Args {
     #[arg(long)]
     wallet: Option<String>,
 
+    /// Transaction hash for receipt proof (used with --wallet)
+    #[arg(long)]
+    tx_hash: Option<String>,
+
     /// Arbitrum RPC URL for fetching trades
     #[arg(long)]
     rpc_url: Option<String>,
@@ -52,7 +56,7 @@ struct Args {
 }
 
 #[cfg(feature = "cli")]
-fn progress_cb(verbose: bool) -> Box<dyn Fn(stark_prover::ProveProgress)> {
+fn make_progress_cb(verbose: bool) -> Box<dyn Fn(stark_prover::ProveProgress)> {
     if verbose {
         Box::new(|p: stark_prover::ProveProgress| {
             println!("[{}] {} ({}%)", p.stage, p.detail, p.percent);
@@ -68,10 +72,6 @@ fn progress_cb(verbose: bool) -> Box<dyn Fn(stark_prover::ProveProgress)> {
 
 #[cfg(feature = "cli")]
 fn output_proof(serialized: &stark_prover::proof::SerializedProof, format: &str) {
-    println!();
-    println!("{}", serialized.summary());
-    println!();
-
     match format {
         "json" => println!("{}", serialized.to_json()),
         "hex" => println!("{}", proof::encode_calldata_hex(serialized)),
@@ -84,31 +84,72 @@ fn output_proof(serialized: &stark_prover::proof::SerializedProof, format: &str)
 async fn main() {
     let args = Args::parse();
 
-    if let Some(wallet) = &args.wallet {
-        // Real wallet mode: fetch GMX trades via RPC
-        run_wallet_mode(&args, wallet).await;
+    if args.wallet.is_some() {
+        run_wallet_mode(&args).await;
     } else {
-        // Mock bot mode
-        run_mock_mode(&args);
+        run_bot_mode(&args);
     }
 }
 
+#[cfg(not(feature = "cli"))]
+fn main() {
+    eprintln!("CLI feature not enabled. Build with: cargo run --features cli");
+}
+
 #[cfg(feature = "cli")]
-async fn run_wallet_mode(args: &Args, wallet: &str) {
+fn run_bot_mode(args: &Args) {
+    let bot = match args.bot.as_str() {
+        "a" => stark_prover::mock_data::bot_a_aggressive_eth(),
+        "b" => stark_prover::mock_data::bot_b_safe_hedger(),
+        _ => {
+            eprintln!("Unknown bot: {}. Use 'a' or 'b'.", args.bot);
+            return;
+        }
+    };
+
+    println!("=== STARK Prover for Sharpe Ratio ===");
+    println!("Bot: {} ({} trades)", bot.name, bot.trades.len());
+    println!("Expected Sharpe^2 * SCALE: {}", bot.expected_sharpe_sq_scaled);
+    println!("FRI queries: {}", args.num_queries);
+    println!("Blowup factor: 4");
+    println!();
+
+    let claimed = alloy_primitives::U256::from(bot.expected_sharpe_sq_scaled);
+    let serialized = stark_prover::prove_sharpe_with_progress(
+        &bot.trades,
+        claimed,
+        args.num_queries,
+        None,
+        make_progress_cb(args.verbose),
+    );
+
+    println!();
+    println!("{}", serialized.summary());
+    println!();
+
+    output_proof(&serialized, &args.format);
+}
+
+#[cfg(feature = "cli")]
+async fn run_wallet_mode(args: &Args) {
     use stark_prover::gmx_fetcher;
     use stark_prover::mock_data::GmxTradeRecord;
     use stark_prover::sharpe_trace::SharpeTrace;
 
+    let wallet = args.wallet.as_deref().unwrap();
+    let rpc_url = args.rpc_url.as_deref().unwrap_or(gmx_fetcher::DEFAULT_ARBITRUM_RPC);
+
     println!("=== STARK Prover — Live Wallet Mode ===");
     println!("Wallet: {}", wallet);
+    println!("RPC: {}", rpc_url);
     println!("FRI queries: {}", args.num_queries);
     println!();
 
-    // Fetch trades from Arbitrum RPC
+    // Step 1: Fetch trades from Arbitrum RPC
     println!("[fetch] Fetching GMX PositionDecrease events...");
     let result = gmx_fetcher::fetch_gmx_trades(
         wallet,
-        args.rpc_url.as_deref(),
+        Some(rpc_url),
         args.from_block,
         args.to_block,
     )
@@ -149,26 +190,39 @@ async fn run_wallet_mode(args: &Args, wallet: &str) {
     println!();
     println!("Total return: {:+} bps", result.total_return_bps);
 
-    // Convert to GmxTradeRecord for the prover
+    // Step 2: Fetch receipt proof if tx_hash is provided
+    let dataset_commitment = if let Some(ref tx_hash) = args.tx_hash {
+        println!("\n[receipt] Fetching receipt proof for tx: {}", tx_hash);
+
+        let client = reqwest::Client::new();
+        match gmx_fetcher::fetch_receipt_proof(&client, rpc_url, tx_hash).await {
+            Ok(proof_data) => {
+                let commitment = gmx_fetcher::commitment_from_proof(&proof_data);
+                println!("[receipt] Block: #{}", proof_data.block_number);
+                println!("[receipt] Block hash: 0x{:064x}", proof_data.block_hash);
+                println!("[receipt] Receipts root: 0x{}", hex::encode(proof_data.receipts_root));
+                println!("[receipt] Dataset commitment: 0x{:064x}", commitment);
+                Some(commitment)
+            }
+            Err(e) => {
+                eprintln!("[receipt] Warning: Failed to fetch receipt proof: {}", e);
+                eprintln!("[receipt] Continuing without receipt binding...");
+                None
+            }
+        }
+    } else {
+        println!("\n[receipt] No --tx-hash provided, skipping receipt proof");
+        None
+    };
+
+    // Step 3: Generate proof
     let trades: Vec<GmxTradeRecord> = returns_bps
         .iter()
-        .map(|&bp| GmxTradeRecord {
-            size_in_usd: alloy_primitives::U256::ZERO,
-            size_in_tokens: alloy_primitives::U256::ZERO,
-            collateral_amount: alloy_primitives::U256::ZERO,
-            is_long: true,
-            entry_price: alloy_primitives::U256::ZERO,
-            exit_price: alloy_primitives::U256::ZERO,
-            realized_pnl: alloy_primitives::U256::ZERO,
-            borrowing_fee: alloy_primitives::U256::ZERO,
-            funding_fee: alloy_primitives::U256::ZERO,
-            duration_seconds: 0,
-            return_bps: bp,
-        })
+        .map(|&bp| GmxTradeRecord::from_return_bps(bp))
         .collect();
 
     // Compute claimed Sharpe via field arithmetic
-    let trace = SharpeTrace::generate(&trades);
+    let trace = SharpeTrace::generate(&trades, dataset_commitment);
     let claimed = trace.compute_sharpe_sq_scaled();
     println!("Claimed Sharpe^2 * SCALE: {}", claimed);
     println!();
@@ -178,42 +232,18 @@ async fn run_wallet_mode(args: &Args, wallet: &str) {
         &trades,
         claimed,
         args.num_queries,
-        progress_cb(args.verbose),
+        dataset_commitment,
+        make_progress_cb(args.verbose),
     );
 
-    output_proof(&serialized, &args.format);
-}
-
-#[cfg(feature = "cli")]
-fn run_mock_mode(args: &Args) {
-    let bot = match args.bot.as_str() {
-        "a" => stark_prover::mock_data::bot_a_aggressive_eth(),
-        "b" => stark_prover::mock_data::bot_b_safe_hedger(),
-        _ => {
-            eprintln!("Unknown bot: {}. Use 'a' or 'b'.", args.bot);
-            return;
-        }
-    };
-
-    println!("=== STARK Prover for Sharpe Ratio ===");
-    println!("Bot: {} ({} trades)", bot.name, bot.trades.len());
-    println!("Expected Sharpe^2 * SCALE: {}", bot.expected_sharpe_sq_scaled);
-    println!("FRI queries: {}", args.num_queries);
-    println!("Blowup factor: 4");
+    println!();
+    println!("{}", serialized.summary());
+    if dataset_commitment.is_some() {
+        println!("Receipt proof: BOUND (dataset_commitment in pi[3])");
+    } else {
+        println!("Receipt proof: NOT BOUND (no tx-hash provided)");
+    }
     println!();
 
-    let claimed = alloy_primitives::U256::from(bot.expected_sharpe_sq_scaled);
-    let serialized = stark_prover::prove_sharpe_with_progress(
-        &bot.trades,
-        claimed,
-        args.num_queries,
-        progress_cb(args.verbose),
-    );
-
     output_proof(&serialized, &args.format);
-}
-
-#[cfg(not(feature = "cli"))]
-fn main() {
-    eprintln!("CLI feature not enabled. Build with: cargo run --features cli");
 }

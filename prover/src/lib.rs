@@ -11,14 +11,15 @@ pub mod fri;
 pub mod keccak;
 pub mod mock_data;
 pub mod proof;
+pub mod receipt_proof;
 pub mod sharpe_compose;
 pub mod sharpe_trace;
 
-#[cfg(feature = "wasm")]
-pub mod wasm;
-
 #[cfg(feature = "cli")]
 pub mod gmx_fetcher;
+
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 use alloy_primitives::U256;
 
@@ -136,8 +137,9 @@ pub fn prove_sharpe(
     trades: &[GmxTradeRecord],
     claimed_sharpe_sq_scaled: U256,
     num_queries: usize,
+    dataset_commitment: Option<U256>,
 ) -> SerializedProof {
-    prove_sharpe_with_progress(trades, claimed_sharpe_sq_scaled, num_queries, |_| {})
+    prove_sharpe_with_progress(trades, claimed_sharpe_sq_scaled, num_queries, dataset_commitment, |_| {})
 }
 
 /// Generate a STARK proof for Sharpe ratio verification with progress callbacks.
@@ -145,6 +147,7 @@ pub fn prove_sharpe_with_progress(
     trades: &[GmxTradeRecord],
     claimed_sharpe_sq_scaled: U256,
     num_queries: usize,
+    dataset_commitment: Option<U256>,
     on_progress: impl Fn(ProveProgress),
 ) -> SerializedProof {
     let blowup: u32 = 4;
@@ -156,7 +159,7 @@ pub fn prove_sharpe_with_progress(
         percent: 0,
     });
 
-    let trace = SharpeTrace::generate(trades);
+    let trace = SharpeTrace::generate(trades, dataset_commitment);
     let public_inputs = trace.public_inputs(claimed_sharpe_sq_scaled);
     let log_trace_len = trace.log_len();
     let trace_len = trace.len;
@@ -370,8 +373,8 @@ fn compute_sharpe_composition_at_z(
     // TC3: trade_count_next - trade_count (immutability)
     let tc3 = BN254Field::sub(trace_ood_evals_next[4], trace_ood_evals[4]);
 
-    // TC4: 0 (placeholder)
-    let tc4 = U256::ZERO;
+    // TC4: dataset_commitment_next - dataset_commitment = 0 (immutability)
+    let tc4 = BN254Field::sub(trace_ood_evals_next[5], trace_ood_evals[5]);
 
     // Transition zerofier at z
     let z_n = BN254Field::pow(z, U256::from(trace_len));

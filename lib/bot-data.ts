@@ -17,6 +17,7 @@ export interface BotProfile {
 export type PipelinePhase =
   | "idle"
   | "fetching-trades"
+  | "fetching-receipt-proof"
   | "loading-wasm"
   | "proving"
   | "sending-tx"
@@ -87,66 +88,16 @@ const PIPELINE_STEP_DEFS: Omit<PipelineStep, "status">[] = [
   { id: 5, title: "On-Chain Verify", subtitle: "Submit & confirm on Arbitrum", activeDetail: "Waiting for on-chain confirmation..." },
 ];
 
-/** 6-step pipeline for Live Wallet mode (includes trade fetching step) */
+/** 7-step pipeline for Live Wallet mode (includes trade fetching and receipt proof steps) */
 export const WALLET_PIPELINE_STEP_DEFS: Omit<PipelineStep, "status">[] = [
-  { id: 1, title: "Fetch Trades", subtitle: "GMX PositionDecrease events", activeDetail: "Scanning Arbitrum blocks..." },
-  { id: 2, title: "Load WASM", subtitle: "Initialize prover module", activeDetail: "Loading WASM prover..." },
-  { id: 3, title: "Generate Trace", subtitle: "Sharpe ratio execution trace", activeDetail: "Computing trace polynomials..." },
-  { id: 4, title: "Commit & Compose", subtitle: "Polynomial commitments + composition", activeDetail: "Running Fiat-Shamir protocol..." },
-  { id: 5, title: "FRI Protocol", subtitle: "Low-degree testing & query proofs", activeDetail: "Generating FRI query proofs..." },
-  { id: 6, title: "On-Chain Verify", subtitle: "Submit & confirm on Arbitrum", activeDetail: "Waiting for on-chain confirmation..." },
+  { id: 1, title: "Fetch Trades", subtitle: "Query GMX V2 PositionDecrease events", activeDetail: "Fetching GMX trade events from Arbitrum..." },
+  { id: 2, title: "Receipt Proof", subtitle: "Bind data provenance to blockchain", activeDetail: "Fetching receipt proof + computing commitment..." },
+  { id: 3, title: "Load WASM", subtitle: "Initialize prover module", activeDetail: "Loading WASM prover..." },
+  { id: 4, title: "Generate Trace", subtitle: "Sharpe ratio execution trace", activeDetail: "Computing trace polynomials..." },
+  { id: 5, title: "Commit & Compose", subtitle: "Polynomial commitments + composition", activeDetail: "Running Fiat-Shamir protocol..." },
+  { id: 6, title: "FRI Protocol", subtitle: "Low-degree testing & query proofs", activeDetail: "Generating FRI query proofs..." },
+  { id: 7, title: "On-Chain Verify", subtitle: "Submit & confirm on Arbitrum", activeDetail: "Waiting for on-chain confirmation..." },
 ];
-
-/**
- * Derive 6-step pipeline for wallet mode.
- */
-export function deriveWalletPipelineSteps(
-  phase: PipelinePhase,
-  progress: ProofProgress | null,
-  error: string | null,
-  errorAtStep?: number,
-): PipelineStep[] {
-  let activeStep = 0;
-  if (phase === "fetching-trades") activeStep = 1;
-  else if (phase === "loading-wasm") activeStep = 2;
-  else if (phase === "proving") {
-    if (progress) {
-      const stage = progress.stage;
-      if (stage === "trace") activeStep = 3;
-      else if (stage === "commit" || stage === "compose") activeStep = 4;
-      else if (stage === "fri") activeStep = 5;
-      else if (stage === "done") activeStep = 6;
-      else activeStep = 3;
-    } else {
-      activeStep = 3;
-    }
-  } else if (phase === "sending-tx" || phase === "confirming") activeStep = 6;
-
-  return WALLET_PIPELINE_STEP_DEFS.map((def) => {
-    let status: PipelineStepStatus = "pending";
-
-    if (error && errorAtStep && def.id === errorAtStep) {
-      status = "error";
-    } else if (error && errorAtStep && def.id < errorAtStep) {
-      status = "done";
-    } else if (def.id < activeStep) {
-      status = "done";
-    } else if (def.id === activeStep) {
-      status = error && !errorAtStep ? "error" : "active";
-    }
-
-    let activeDetail = def.activeDetail;
-    if (def.id === activeStep && phase === "proving" && progress) {
-      activeDetail = progress.detail;
-    } else if (def.id === 6 && phase === "sending-tx") {
-      activeDetail = "Sending transaction...";
-    } else if (def.id === 6 && phase === "confirming") {
-      activeDetail = "Waiting for on-chain confirmation...";
-    }
-
-    return { ...def, activeDetail, status };
-  });
-}
 
 /**
  * Pure function: maps (phase, progress, error, errorAtStep) → 5 PipelineStep[] with correct statuses.
@@ -194,6 +145,59 @@ export function derivePipelineSteps(
     } else if (def.id === 5 && phase === "sending-tx") {
       activeDetail = "Sending transaction...";
     } else if (def.id === 5 && phase === "confirming") {
+      activeDetail = "Waiting for on-chain confirmation...";
+    }
+
+    return { ...def, activeDetail, status };
+  });
+}
+
+/**
+ * Derive pipeline steps for the wallet (live data) flow.
+ * 7-step pipeline: Fetch Trades → Receipt Proof → Load WASM → Trace → Commit → FRI → Verify
+ */
+export function deriveWalletPipelineSteps(
+  phase: PipelinePhase,
+  progress: ProofProgress | null,
+  error: string | null,
+  errorAtStep?: number,
+): PipelineStep[] {
+  let activeStep = 0;
+  if (phase === "fetching-trades") activeStep = 1;
+  else if (phase === "fetching-receipt-proof") activeStep = 2;
+  else if (phase === "loading-wasm") activeStep = 3;
+  else if (phase === "proving") {
+    if (progress) {
+      const stage = progress.stage;
+      if (stage === "trace") activeStep = 4;
+      else if (stage === "commit" || stage === "compose") activeStep = 5;
+      else if (stage === "fri") activeStep = 6;
+      else if (stage === "done") activeStep = 7;
+      else activeStep = 4;
+    } else {
+      activeStep = 4;
+    }
+  } else if (phase === "sending-tx" || phase === "confirming") activeStep = 7;
+
+  return WALLET_PIPELINE_STEP_DEFS.map((def) => {
+    let status: PipelineStepStatus = "pending";
+
+    if (error && errorAtStep && def.id === errorAtStep) {
+      status = "error";
+    } else if (error && errorAtStep && def.id < errorAtStep) {
+      status = "done";
+    } else if (def.id < activeStep) {
+      status = "done";
+    } else if (def.id === activeStep) {
+      status = error && !errorAtStep ? "error" : "active";
+    }
+
+    let activeDetail = def.activeDetail;
+    if (def.id === activeStep && phase === "proving" && progress) {
+      activeDetail = progress.detail;
+    } else if (def.id === 7 && phase === "sending-tx") {
+      activeDetail = "Sending transaction...";
+    } else if (def.id === 7 && phase === "confirming") {
       activeDetail = "Waiting for on-chain confirmation...";
     }
 
