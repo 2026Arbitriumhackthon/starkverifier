@@ -299,10 +299,16 @@ export async function fetchReceiptHashes(
   const unique = [...new Set(txHashes)];
   const hashCache = new Map<string, Uint8Array>();
 
-  // Fetch receipts in parallel (batches of 10 to avoid RPC rate limits)
-  const BATCH_SIZE = 10;
+  console.log(`[ReceiptProof] Fetching receipt hashes for ${unique.length} unique txs...`);
+
+  // Fetch receipts in parallel (batches of 5 to avoid RPC rate limits)
+  const BATCH_SIZE = 5;
   for (let i = 0; i < unique.length; i += BATCH_SIZE) {
     const batch = unique.slice(i, i + BATCH_SIZE);
+    const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+    const totalBatches = Math.ceil(unique.length / BATCH_SIZE);
+    console.log(`[ReceiptProof] Batch ${batchNum}/${totalBatches} (${batch.length} txs)...`);
+
     const promises = batch.map(async (txHash) => {
       const receipt = await rpcCall(rpcUrl, "eth_getTransactionReceipt", [txHash]);
       if (!receipt) {
@@ -316,6 +322,11 @@ export async function fetchReceiptHashes(
     const results = await Promise.all(promises);
     for (const { txHash, receiptHash } of results) {
       hashCache.set(txHash, receiptHash);
+    }
+
+    // Small delay between batches to avoid rate limiting
+    if (i + BATCH_SIZE < unique.length) {
+      await new Promise((r) => setTimeout(r, 200));
     }
   }
 
@@ -374,19 +385,33 @@ async function rpcCall(
   method: string,
   params: unknown[]
 ): Promise<Record<string, unknown> | null> {
-  const resp = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      method,
-      params,
-      id: 1,
-    }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
 
-  const data = (await resp.json()) as { result: Record<string, unknown> | null };
-  return data.result;
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method,
+        params,
+        id: 1,
+      }),
+      signal: controller.signal,
+    });
+
+    const data = (await resp.json()) as {
+      result: Record<string, unknown> | null;
+      error?: { code: number; message: string };
+    };
+    if (data.error) {
+      throw new Error(`RPC error (${method}): ${data.error.message}`);
+    }
+    return data.result;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**
@@ -429,6 +454,10 @@ async function rpcCallArray(
   method: string,
   params: unknown[]
 ): Promise<Array<Record<string, unknown>> | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15_000);
+
+  try {
   const resp = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -438,11 +467,15 @@ async function rpcCallArray(
       params,
       id: 1,
     }),
+    signal: controller.signal,
   });
 
   const data = (await resp.json()) as {
     result: Array<Record<string, unknown>> | null;
   };
   return data.result;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
