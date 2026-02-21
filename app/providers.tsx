@@ -2,7 +2,6 @@
 
 import { ThirdwebProvider, AutoConnect } from "thirdweb/react";
 import { createWallet } from "thirdweb/wallets";
-import { GasProvider } from "@/lib/gas-context";
 import { client } from "@/lib/client";
 import { arbitrumSepolia } from "@/lib/chains";
 
@@ -28,7 +27,7 @@ export function Providers({ children }: ProvidersProps) {
           console.log("Auto-connected to wallet:", wallet.id);
         }}
       />
-      <GasProvider>{children}</GasProvider>
+      {children}
     </ThirdwebProvider>
   );
 }
