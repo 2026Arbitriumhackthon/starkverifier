@@ -40,6 +40,23 @@ export function AgentDashboard() {
   const [progress, setProgress] = useState<ProofProgress | null>(null);
   const [records, setRecords] = useState<VerificationRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [errorAtStep, setErrorAtStep] = useState<number | undefined>(undefined);
+
+  // Map phase to step number for error tracking
+  const getActiveStep = useCallback((p: PipelinePhase, prog: ProofProgress | null): number => {
+    if (p === "loading-wasm") return 1;
+    if (p === "proving") {
+      if (!prog) return 2;
+      const s = prog.stage;
+      if (s === "trace") return 2;
+      if (s === "commit" || s === "compose") return 3;
+      if (s === "fri") return 4;
+      if (s === "done") return 5;
+      return 2;
+    }
+    if (p === "sending-tx" || p === "confirming") return 5;
+    return 0;
+  }, []);
 
   const handleVerify = useCallback(
     async (bot: BotProfile) => {
@@ -52,22 +69,32 @@ export function AgentDashboard() {
       setPhase("idle");
       setProgress(null);
       setError(null);
+      setErrorAtStep(undefined);
+
+      let currentPhase: PipelinePhase = "idle";
+      let currentProgress: ProofProgress | null = null;
 
       try {
         // Phase 1: Load WASM
-        setPhase("loading-wasm");
+        currentPhase = "loading-wasm";
+        setPhase(currentPhase);
         await loadWasmProver();
 
         // Phase 2: Generate proof
-        setPhase("proving");
+        currentPhase = "proving";
+        setPhase(currentPhase);
         const proof: StarkProofJSON = await generateSharpeProof(
           bot.id,
           NUM_QUERIES,
-          (p) => setProgress(p)
+          (p) => {
+            currentProgress = p;
+            setProgress(p);
+          }
         );
 
         // Phase 3: Send transaction
-        setPhase("sending-tx");
+        currentPhase = "sending-tx";
+        setPhase(currentPhase);
         const contract = getStarkVerifierContract();
         const tx = prepareContractCall({
           contract,
@@ -89,7 +116,8 @@ export function AgentDashboard() {
         });
 
         // Phase 4: Wait for confirmation
-        setPhase("confirming");
+        currentPhase = "confirming";
+        setPhase(currentPhase);
         const receipt = await waitForReceipt({
           client,
           chain: arbitrumSepolia,
@@ -125,6 +153,7 @@ export function AgentDashboard() {
         const message =
           err instanceof Error ? err.message : "Unknown error occurred";
         setError(message);
+        setErrorAtStep(getActiveStep(currentPhase, currentProgress));
         toast.error(`Verification failed: ${message}`);
       } finally {
         setVerifyingBotId(null);
@@ -132,7 +161,7 @@ export function AgentDashboard() {
         setProgress(null);
       }
     },
-    [account]
+    [account, getActiveStep]
   );
 
   return (
@@ -241,6 +270,7 @@ export function AgentDashboard() {
             phase={verifyingBotId ? phase : "idle"}
             progress={verifyingBotId ? progress : null}
             error={error}
+            errorAtStep={errorAtStep}
             records={records}
             verifyingBotId={verifyingBotId}
             onVerify={handleVerify}

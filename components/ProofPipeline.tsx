@@ -40,6 +40,7 @@ interface ProofPipelineProps {
   phase: PipelinePhase;
   progress: ProofProgress | null;
   error: string | null;
+  errorAtStep?: number;
   records: VerificationRecord[];
   verifyingBotId: string | null;
   onVerify: (bot: BotProfile) => void;
@@ -177,6 +178,7 @@ export function ProofPipeline({
   phase,
   progress,
   error,
+  errorAtStep,
   records,
   verifyingBotId,
   onVerify,
@@ -185,7 +187,7 @@ export function ProofPipeline({
   const selectedBot = BOTS.find((b) => b.id === selectedBotId)!;
   const isVerifying = verifyingBotId !== null;
 
-  const steps = derivePipelineSteps(phase, progress, error);
+  const steps = derivePipelineSteps(phase, progress, error, errorAtStep);
 
   // Find the latest record for the selected bot (shown after verification completes)
   const latestRecord = records.find((r) => r.botId === selectedBotId);
