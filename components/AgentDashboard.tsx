@@ -4,7 +4,7 @@ import { useState, useCallback } from "react";
 import { useActiveAccount } from "thirdweb/react";
 import { prepareContractCall, sendTransaction, waitForReceipt } from "thirdweb";
 import { toast } from "sonner";
-import { ExternalLink, LayoutDashboard, GitBranch, Wallet } from "lucide-react";
+import { ExternalLink, LayoutDashboard, GitBranch, Wallet, BarChart3 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AgentCard } from "@/components/AgentCard";
 import { ProofPipeline } from "@/components/ProofPipeline";
 import { WalletProver } from "@/components/WalletProver";
+import { GasComparison } from "@/components/GasComparison";
 import { getStarkVerifierContract } from "@/lib/contracts";
 import type { StarkProofJSON } from "@/lib/contracts";
 import { formatGas, getArbitrumReceiptWithL1Gas } from "@/lib/gas-utils";
@@ -194,6 +195,10 @@ export function AgentDashboard() {
             <Wallet className="h-4 w-4" />
             Live Wallet
           </TabsTrigger>
+          <TabsTrigger value="comparison">
+            <BarChart3 className="h-4 w-4" />
+            Gas Comparison
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="dashboard" className="space-y-8 mt-6">
@@ -284,6 +289,10 @@ export function AgentDashboard() {
 
         <TabsContent value="wallet" className="mt-6">
           <WalletProver />
+        </TabsContent>
+
+        <TabsContent value="comparison" className="mt-6">
+          <GasComparison />
         </TabsContent>
       </Tabs>
     </section>
