@@ -7,7 +7,7 @@ import { arbitrumSepolia } from "./chains";
  */
 
 // STARK Verifier v6 (Keccak + Sharpe + Phase A commitment binding, Stylus)
-export const STARK_VERIFIER_V4_ADDRESS =
+export const STARK_VERIFIER_ADDRESS =
   "0x365344c7057eee248c986e4170e143f0449d943e" as const;
 
 // EvaluationRegistry (Phase 2 — agent evaluation on-chain records)
@@ -206,7 +206,7 @@ export const getStarkVerifierContract = () =>
   getContract({
     client,
     chain: arbitrumSepolia,
-    address: STARK_VERIFIER_V4_ADDRESS,
+    address: STARK_VERIFIER_ADDRESS,
     abi: STARK_VERIFIER_ABI,
   });
 

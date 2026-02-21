@@ -17,15 +17,16 @@ function keccak256(data: Uint8Array): Uint8Array {
   return keccak_256(data);
 }
 
-// Runtime keccak verification — log once to confirm noble is loaded
+// Runtime keccak verification — verify noble is loaded correctly
 let _keccakVerified = false;
 function verifyKeccakOnce() {
   if (_keccakVerified) return;
   _keccakVerified = true;
   const testHash = keccak256(new Uint8Array(0));
   const hex = Array.from(testHash).map(b => b.toString(16).padStart(2, "0")).join("");
-  const ok = hex.startsWith("c5d24601");
-  console.log(`[ReceiptTrie] keccak256 verification: ${ok ? "CORRECT" : "WRONG"} (noble/hashes) hash=${hex.slice(0, 16)}...`);
+  if (!hex.startsWith("c5d24601")) {
+    throw new Error(`keccak256 implementation is incorrect: got ${hex.slice(0, 16)}...`);
+  }
 }
 
 // ── MPT Node Types ───────────────────────────────────────
