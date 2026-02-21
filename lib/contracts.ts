@@ -6,9 +6,9 @@ import { arbitrumSepolia } from "./chains";
  * Contract addresses on Arbitrum Sepolia
  */
 
-// STARK Verifier v4 (Keccak + Sharpe ratio, Stylus)
+// STARK Verifier v5 (Keccak + Sharpe + MPT receipt verification, Stylus)
 export const STARK_VERIFIER_V4_ADDRESS =
-  "0x4709cc3862280597855a6986b13f1f1ccb309ff9" as const;
+  "0x5f83f682b9b77614e2b90d75092abc97b49ae378" as const;
 
 // EvaluationRegistry (Phase 2 — agent evaluation on-chain records)
 export const EVALUATION_REGISTRY_ADDRESS =
@@ -46,8 +46,10 @@ export const STARK_VERIFIER_ABI = [
       { name: "queryMetadata", type: "uint256[]" },
       { name: "blockHash", type: "uint256" },
       { name: "receiptsRoot", type: "uint256[]" },
-      { name: "receiptRlp", type: "uint256[]" },
-      { name: "receiptRlpLen", type: "uint256" },
+      { name: "receiptProofNodes", type: "uint256[]" },
+      { name: "receiptProofNodesLen", type: "uint256" },
+      { name: "receiptKey", type: "uint256[]" },
+      { name: "receiptKeyLen", type: "uint256" },
     ],
     outputs: [{ name: "valid", type: "bool" }],
     stateMutability: "nonpayable",

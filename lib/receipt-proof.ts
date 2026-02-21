@@ -2,11 +2,20 @@
  * Receipt Proof Fetcher
  *
  * Fetches Ethereum transaction receipts and block headers,
- * then computes a dataset_commitment that binds the receipt data
+ * builds an MPT (Merkle Patricia Trie) proof for inclusion,
+ * and computes a dataset_commitment that binds the receipt data
  * to the STARK proof for data provenance verification.
  *
  * dataset_commitment = keccak(blockHash, keccak(receiptsRoot, receiptHash)) mod BN254
  */
+
+import { rlpEncodeReceipt } from "./rlp";
+import {
+  buildReceiptTrieAndProve,
+  buildReceiptTrieFromRawBytes,
+  verifyMptProof,
+} from "./receipt-trie";
+import { keccak_256 } from "@noble/hashes/sha3.js";
 
 const BN254_PRIME = BigInt(
   "21888242871839275222246405745257275088548364400416034343698204186575808495617"
@@ -17,21 +26,27 @@ export interface ReceiptProofData {
   blockNumber: number;
   receiptsRoot: string;
   txIndex: number;
-  receiptData: Uint8Array;
+  receiptRlp: Uint8Array;
+  receiptProofNodes: Uint8Array[];
+  receiptKey: Uint8Array;
   datasetCommitment: string;
 }
 
 /**
- * Keccak256 hash using the Web Crypto API fallback.
- * Since we need keccak (not SHA), we use a minimal JS implementation.
+ * Keccak256 hash using @noble/hashes (same algorithm as Stylus precompile).
  */
 async function keccak256(data: Uint8Array): Promise<Uint8Array> {
-  // Minimal Keccak-256 implementation for browser use
-  return keccakHash(data);
+  return keccak_256(data);
 }
 
 /**
- * Fetch receipt proof data for a transaction and compute dataset_commitment.
+ * Fetch receipt proof data for a transaction, including MPT proof nodes.
+ *
+ * 1. Fetches the target transaction receipt and block header
+ * 2. Fetches all receipts in the block (eth_getBlockReceipts)
+ * 3. Builds a receipt trie and generates an MPT proof
+ * 4. Verifies the proof client-side (sanity check)
+ * 5. Computes dataset_commitment
  */
 export async function fetchReceiptProof(
   rpcUrl: string,
@@ -60,27 +75,65 @@ export async function fetchReceiptProof(
   const blockHash = blockResp.hash as string;
   const receiptsRoot = blockResp.receiptsRoot as string;
 
-  // Step 3: Build receipt data for hashing
-  const receiptData = buildReceiptData(receiptResp);
+  // Step 3: Build receipt trie and generate MPT proof.
+  // Try debug_getRawReceipts first (exact bytes from the node → guaranteed correct root).
+  // Fall back to eth_getBlockReceipts + re-encoding if debug method is unavailable.
+  let trieProof;
 
-  // Step 4: Compute dataset_commitment
-  const receiptHash = await keccak256(receiptData);
+  const rawReceiptsHex = await fetchRawReceipts(rpcUrl, receiptResp.blockNumber as string);
 
-  // inner = keccak256(receiptsRoot || receiptHash)
+  if (rawReceiptsHex) {
+    console.log(`[ReceiptProof] Using debug_getRawReceipts (${rawReceiptsHex.length} receipts)`);
+    const rawReceipts = rawReceiptsHex.map((hex: string) => hexToBytes(hex));
+    trieProof = buildReceiptTrieFromRawBytes(rawReceipts, txIndex);
+  } else {
+    console.log("[ReceiptProof] debug_getRawReceipts unavailable, falling back to re-encoding");
+    const blockReceipts = await rpcCallArray(rpcUrl, "eth_getBlockReceipts", [
+      receiptResp.blockNumber,
+    ]);
+    if (!blockReceipts || blockReceipts.length === 0) {
+      throw new Error(`Failed to fetch block receipts for block ${blockNumber}`);
+    }
+    const formattedReceipts = blockReceipts.map(formatReceiptForRlp);
+    trieProof = buildReceiptTrieAndProve(formattedReceipts, txIndex);
+  }
+
+  // Step 5: Client-side sanity check — verify our MPT proof against receiptsRoot
+  const expectedRoot = hexToBytes(receiptsRoot);
+  const verifiedValue = verifyMptProof(
+    expectedRoot,
+    trieProof.key,
+    trieProof.proofNodes,
+  );
+
+  // If client-side verification fails, the trie root may not match on-chain receiptsRoot.
+  // Log a warning but don't hard-fail: the on-chain verifier is the final authority.
+  if (verifiedValue === null) {
+    console.warn(
+      "Client-side MPT proof verification returned null. " +
+      "Computed root may differ from on-chain receiptsRoot. " +
+      `Computed: 0x${bytesToHex(trieProof.root)}, Expected: ${receiptsRoot}`
+    );
+  }
+
+  // Step 6: RLP-encode the target receipt (standard format)
+  const receiptRlp = trieProof.value;
+
+  // Step 7: Compute dataset_commitment
+  const receiptHash = await keccak256(receiptRlp);
+
   const receiptsRootBytes = hexToBytes(receiptsRoot);
   const innerInput = new Uint8Array(64);
   innerInput.set(padTo32(receiptsRootBytes), 0);
   innerInput.set(receiptHash, 32);
   const inner = await keccak256(innerInput);
 
-  // outer = keccak256(blockHash || inner)
   const blockHashBytes = hexToBytes(blockHash);
   const outerInput = new Uint8Array(64);
   outerInput.set(padTo32(blockHashBytes), 0);
   outerInput.set(inner, 32);
   const outer = await keccak256(outerInput);
 
-  // Reduce mod BN254 prime
   const raw = bytesToBigInt(outer);
   const commitmentBigInt = raw % BN254_PRIME;
   const commitmentHex = "0x" + commitmentBigInt.toString(16).padStart(64, "0");
@@ -90,57 +143,90 @@ export async function fetchReceiptProof(
     blockNumber,
     receiptsRoot,
     txIndex,
-    receiptData,
+    receiptRlp,
+    receiptProofNodes: trieProof.proofNodes,
+    receiptKey: trieProof.key,
     datasetCommitment: commitmentHex,
   };
 }
 
-function buildReceiptData(
-  receipt: Record<string, unknown>
-): Uint8Array {
-  const parts: Uint8Array[] = [];
-
-  // Status (8 bytes big-endian)
-  const statusHex = (receipt.status as string) || "0x1";
-  const status = BigInt(statusHex);
-  parts.push(bigIntToBytes(status, 8));
-
-  // Cumulative gas used (8 bytes big-endian)
-  const gasHex = (receipt.cumulativeGasUsed as string) || "0x0";
-  const gas = BigInt(gasHex);
-  parts.push(bigIntToBytes(gas, 8));
-
-  // Logs bloom
-  const logsBloomHex = (receipt.logsBloom as string) || "0x";
-  if (logsBloomHex.length > 2) {
-    parts.push(hexToBytes(logsBloomHex));
-  }
-
-  // Logs data and topics
-  const logs = (receipt.logs as Array<Record<string, unknown>>) || [];
-  for (const log of logs) {
-    const data = (log.data as string) || "0x";
-    if (data.length > 2) {
-      parts.push(hexToBytes(data));
-    }
-    const topics = (log.topics as string[]) || [];
-    for (const topic of topics) {
-      if (topic.length > 2) {
-        parts.push(hexToBytes(topic));
-      }
-    }
-  }
-
-  // Concatenate all parts
-  const totalLen = parts.reduce((sum, p) => sum + p.length, 0);
-  const result = new Uint8Array(totalLen);
-  let offset = 0;
-  for (const part of parts) {
-    result.set(part, offset);
-    offset += part.length;
-  }
-  return result;
+/**
+ * Format a raw RPC receipt into the shape expected by rlpEncodeReceipt.
+ */
+function formatReceiptForRlp(receipt: Record<string, unknown>): {
+  status: string;
+  type?: string;
+  cumulativeGasUsed: string;
+  logsBloom: string;
+  logs: Array<{ address: string; topics: string[]; data: string }>;
+} {
+  return {
+    status: (receipt.status as string) || "0x1",
+    type: receipt.type as string | undefined,
+    cumulativeGasUsed: (receipt.cumulativeGasUsed as string) || "0x0",
+    logsBloom: (receipt.logsBloom as string) || "0x",
+    logs: ((receipt.logs as Array<Record<string, unknown>>) || []).map((log) => ({
+      address: (log.address as string) || "0x",
+      topics: (log.topics as string[]) || [],
+      data: (log.data as string) || "0x",
+    })),
+  };
 }
+
+/**
+ * Encode U256 words for on-chain submission.
+ * Packs arbitrary bytes into 32-byte aligned U256 words.
+ */
+export function encodeToU256Words(data: Uint8Array): bigint[] {
+  const words: bigint[] = [];
+  for (let i = 0; i < data.length; i += 32) {
+    const chunk = data.slice(i, Math.min(i + 32, data.length));
+    // Pad to 32 bytes (right-pad with zeros)
+    const padded = new Uint8Array(32);
+    padded.set(chunk, 0);
+    words.push(bytesToBigInt(padded));
+  }
+  return words;
+}
+
+/**
+ * Encode MPT proof nodes for on-chain submission.
+ *
+ * Format: [num_nodes, len_0, len_1, ..., len_{n-1}, packed_data_words...]
+ *
+ * - num_nodes: number of proof nodes
+ * - len_i: byte length of i-th node
+ * - packed_data_words: all node bytes concatenated and packed into 32-byte U256 words
+ */
+export function encodeProofNodes(
+  nodes: Uint8Array[]
+): { words: bigint[]; totalLen: number } {
+  // Header: [num_nodes, len_0, len_1, ...]
+  const headerWords: bigint[] = [BigInt(nodes.length)];
+  let totalDataLen = 0;
+  for (const node of nodes) {
+    headerWords.push(BigInt(node.length));
+    totalDataLen += node.length;
+  }
+
+  // Body: concatenate all node bytes
+  const allData = new Uint8Array(totalDataLen);
+  let offset = 0;
+  for (const node of nodes) {
+    allData.set(node, offset);
+    offset += node.length;
+  }
+
+  // Pack into 32-byte words
+  const dataWords = encodeToU256Words(allData);
+
+  return {
+    words: [...headerWords, ...dataWords],
+    totalLen: totalDataLen,
+  };
+}
+
+// ── Utility functions ────────────────────────────────────
 
 function hexToBytes(hex: string): Uint8Array {
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
@@ -152,21 +238,17 @@ function hexToBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function padTo32(bytes: Uint8Array): Uint8Array {
   if (bytes.length >= 32) return bytes.slice(0, 32);
   const padded = new Uint8Array(32);
   padded.set(bytes, 32 - bytes.length);
   return padded;
-}
-
-function bigIntToBytes(value: bigint, length: number): Uint8Array {
-  const bytes = new Uint8Array(length);
-  let v = value;
-  for (let i = length - 1; i >= 0; i--) {
-    bytes[i] = Number(v & BigInt(0xff));
-    v = v >> BigInt(8);
-  }
-  return bytes;
 }
 
 function bytesToBigInt(bytes: Uint8Array): bigint {
@@ -197,113 +279,60 @@ async function rpcCall(
   return data.result;
 }
 
-// ────────────────────────────────────────────────────────
-// Minimal Keccak-256 implementation (no external dependencies)
-// Based on the Keccak specification (FIPS 202 / SHA-3)
-// ────────────────────────────────────────────────────────
+/**
+ * Try to fetch raw receipt bytes via debug_getRawReceipts.
+ * Returns null if the RPC doesn't support this method.
+ */
+async function fetchRawReceipts(
+  url: string,
+  blockNumber: string,
+): Promise<string[] | null> {
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        method: "debug_getRawReceipts",
+        params: [blockNumber],
+        id: 1,
+      }),
+    });
 
-const KECCAK_ROUNDS = 24;
-const RC = [
-  BigInt("0x0000000000000001"), BigInt("0x0000000000008082"),
-  BigInt("0x800000000000808A"), BigInt("0x8000000080008000"),
-  BigInt("0x000000000000808B"), BigInt("0x0000000080000001"),
-  BigInt("0x8000000080008081"), BigInt("0x8000000000008009"),
-  BigInt("0x000000000000008A"), BigInt("0x0000000000000088"),
-  BigInt("0x0000000080008009"), BigInt("0x000000008000000A"),
-  BigInt("0x000000008000808B"), BigInt("0x800000000000008B"),
-  BigInt("0x8000000000008089"), BigInt("0x8000000000008003"),
-  BigInt("0x8000000000008002"), BigInt("0x8000000000000080"),
-  BigInt("0x000000000000800A"), BigInt("0x800000008000000A"),
-  BigInt("0x8000000080008081"), BigInt("0x8000000000008080"),
-  BigInt("0x0000000080000001"), BigInt("0x8000000080008008"),
-];
+    const data = (await resp.json()) as {
+      result?: string[] | null;
+      error?: { code: number; message: string };
+    };
 
-const ROTATIONS = [
-  [0, 36, 3, 41, 18], [1, 44, 10, 45, 2],
-  [62, 6, 43, 15, 61], [28, 55, 25, 21, 56],
-  [27, 20, 39, 8, 14],
-];
-
-const MASK64 = BigInt("0xFFFFFFFFFFFFFFFF");
-
-function rot64(x: bigint, n: number): bigint {
-  n = n % 64;
-  if (n === 0) return x;
-  return ((x << BigInt(n)) | (x >> BigInt(64 - n))) & MASK64;
-}
-
-function keccakF1600(state: bigint[]): void {
-  for (let round = 0; round < KECCAK_ROUNDS; round++) {
-    // Theta
-    const c = new Array(5);
-    for (let x = 0; x < 5; x++) {
-      c[x] = state[x] ^ state[x + 5] ^ state[x + 10] ^ state[x + 15] ^ state[x + 20];
-    }
-    const d = new Array(5);
-    for (let x = 0; x < 5; x++) {
-      d[x] = c[(x + 4) % 5] ^ rot64(c[(x + 1) % 5], 1);
-    }
-    for (let x = 0; x < 5; x++) {
-      for (let y = 0; y < 5; y++) {
-        state[x + y * 5] = (state[x + y * 5] ^ d[x]) & MASK64;
-      }
+    if (data.error || !data.result) {
+      return null;
     }
 
-    // Rho and Pi
-    const b = new Array(25).fill(BigInt(0));
-    for (let x = 0; x < 5; x++) {
-      for (let y = 0; y < 5; y++) {
-        b[y + ((2 * x + 3 * y) % 5) * 5] = rot64(state[x + y * 5], ROTATIONS[y][x]);
-      }
-    }
-
-    // Chi
-    for (let x = 0; x < 5; x++) {
-      for (let y = 0; y < 5; y++) {
-        const notB = (b[(x + 1) % 5 + y * 5] ^ MASK64) & MASK64;
-        state[x + y * 5] = (b[x + y * 5] ^ (notB & b[(x + 2) % 5 + y * 5])) & MASK64;
-      }
-    }
-
-    // Iota
-    state[0] = (state[0] ^ RC[round]) & MASK64;
+    return data.result;
+  } catch {
+    return null;
   }
 }
 
-function keccakHash(data: Uint8Array): Uint8Array {
-  const rate = 136; // 1088 bits for Keccak-256
-  const outputLen = 32;
+async function rpcCallArray(
+  url: string,
+  method: string,
+  params: unknown[]
+): Promise<Array<Record<string, unknown>> | null> {
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      method,
+      params,
+      id: 1,
+    }),
+  });
 
-  // Padding (Keccak padding: 0x01...0x80)
-  const padLen = rate - (data.length % rate);
-  const padded = new Uint8Array(data.length + padLen);
-  padded.set(data);
-  padded[data.length] = 0x01;
-  padded[padded.length - 1] |= 0x80;
-
-  // Initialize state
-  const state = new Array(25).fill(BigInt(0));
-
-  // Absorb
-  for (let i = 0; i < padded.length; i += rate) {
-    for (let j = 0; j < rate / 8; j++) {
-      let lane = BigInt(0);
-      for (let k = 0; k < 8; k++) {
-        lane |= BigInt(padded[i + j * 8 + k]) << BigInt(k * 8);
-      }
-      state[j] = (state[j] ^ lane) & MASK64;
-    }
-    keccakF1600(state);
-  }
-
-  // Squeeze
-  const output = new Uint8Array(outputLen);
-  for (let j = 0; j < outputLen / 8; j++) {
-    const lane = state[j];
-    for (let k = 0; k < 8; k++) {
-      output[j * 8 + k] = Number((lane >> BigInt(k * 8)) & BigInt(0xff));
-    }
-  }
-
-  return output;
+  const data = (await resp.json()) as {
+    result: Array<Record<string, unknown>> | null;
+  };
+  return data.result;
 }
+

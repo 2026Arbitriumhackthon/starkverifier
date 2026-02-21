@@ -19,7 +19,7 @@ pnpm lint             # ESLint (next/core-web-vitals + typescript)
 ### Stylus Contract (Rust)
 ```bash
 cd contracts/stylus
-cargo test --features export-abi      # Run all 66 unit tests
+cargo test --features export-abi      # Run all 79 unit tests
 cargo test merkle                     # Run only merkle tests
 cargo test stark                      # Run only stark tests
 cargo stylus check                    # Validate WASM contract
@@ -58,7 +58,7 @@ The codebase has four parts:
 
 | Contract | Address | Purpose |
 |----------|---------|---------|
-| STARK Verifier v4 (Keccak + Sharpe, Stylus) | `0x4709cc3862280597855a6986b13f1f1ccb309ff9` | Sharpe ratio STARK verification |
+| STARK Verifier v5 (Keccak + Sharpe + MPT, Stylus) | `0x5f83f682b9b77614e2b90d75092abc97b49ae378` | Sharpe ratio STARK + receipt MPT verification |
 | EvaluationRegistry (Solidity) | TBD | On-chain agent evaluation records |
 
 ## Sharpe Ratio Proof Interface

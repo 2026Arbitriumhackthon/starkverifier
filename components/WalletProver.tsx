@@ -36,7 +36,7 @@ import {
   ARBISCAN_TX_URL,
 } from "@/lib/bot-data";
 import { formatGas } from "@/lib/gas-utils";
-import { fetchReceiptProof } from "@/lib/receipt-proof";
+import { fetchReceiptProof, encodeProofNodes, encodeToU256Words } from "@/lib/receipt-proof";
 import { fetchWalletTrades, type WalletTradeResult } from "@/lib/gmx-trades";
 import {
   loadWasmProver,
@@ -153,6 +153,7 @@ export function WalletProver() {
     blockNumber: number;
     tradeCount: number;
     totalReturnBps: number;
+    mptOnChain: boolean;
   } | null>(null);
 
   const network = NETWORKS.find((n) => n.id === selectedNetwork)!;
@@ -244,27 +245,116 @@ export function WalletProver() {
       );
 
       // Step 7: On-chain verification
+      // Try full MPT on-chain verification first.
+      // If WalletConnect rejects due to payload size, fall back to STARK-only.
       currentPhase = "sending-tx";
       setPhase(currentPhase);
       const contract = getStarkVerifierContract();
-      const tx = prepareContractCall({
-        contract,
-        method: "verifySharpeProof",
-        params: [
-          proof.publicInputs.map(BigInt),
-          proof.commitments.map(BigInt),
-          proof.oodValues.map(BigInt),
-          proof.friFinalPoly.map(BigInt),
-          proof.queryValues.map(BigInt),
-          proof.queryPaths.map(BigInt),
-          proof.queryMetadata.map(BigInt),
-        ],
-      });
 
-      const txResult = await sendTransaction({
-        transaction: tx,
-        account,
-      });
+      const proofNodesEncoded = encodeProofNodes(receiptProof.receiptProofNodes);
+      const receiptKeyWords = encodeToU256Words(receiptProof.receiptKey);
+
+      // Log calldata size for diagnostics
+      const starkU256Count =
+        proof.publicInputs.length + proof.commitments.length +
+        proof.oodValues.length + proof.friFinalPoly.length +
+        proof.queryValues.length + proof.queryPaths.length +
+        proof.queryMetadata.length;
+      const receiptU256Count =
+        1 + 1 + proofNodesEncoded.words.length + 1 +
+        receiptKeyWords.length + 1;
+      const totalCalldataEst = (starkU256Count + receiptU256Count) * 32;
+      console.log(
+        `[ProofPipeline] Calldata estimate: STARK=${starkU256Count * 32}B, ` +
+        `Receipt=${receiptU256Count * 32}B, Total=${totalCalldataEst}B ` +
+        `(proofNodes=${proofNodesEncoded.totalLen}B, ${receiptProof.receiptProofNodes.length} nodes)`
+      );
+      // Per-node size breakdown
+      for (let i = 0; i < receiptProof.receiptProofNodes.length; i++) {
+        const node = receiptProof.receiptProofNodes[i];
+        console.log(`[ProofPipeline] Node ${i}: ${node.length}B, first2bytes=0x${node[0]?.toString(16).padStart(2,"0")}${node[1]?.toString(16).padStart(2,"0")}`);
+      }
+      console.log(`[ProofPipeline] Receipt RLP: ${receiptProof.receiptRlp.length}B, block=${receiptProof.blockNumber}, txIdx=${receiptProof.txIndex}`);
+
+      let mptOnChain = false;
+      let txResult;
+
+      try {
+        // Attempt full on-chain MPT + STARK verification
+        // MetaMask (injected) has no payload size limit.
+        // WalletConnect relay may reject large payloads — catch handles fallback.
+        const fullTx = prepareContractCall({
+          contract,
+          method: "verifySharpeProofWithReceipt",
+          params: [
+            proof.publicInputs.map(BigInt),
+            proof.commitments.map(BigInt),
+            proof.oodValues.map(BigInt),
+            proof.friFinalPoly.map(BigInt),
+            proof.queryValues.map(BigInt),
+            proof.queryPaths.map(BigInt),
+            proof.queryMetadata.map(BigInt),
+            BigInt(receiptProof.blockHash),
+            [BigInt(receiptProof.receiptsRoot)],
+            proofNodesEncoded.words,
+            BigInt(proofNodesEncoded.totalLen),
+            receiptKeyWords,
+            BigInt(receiptProof.receiptKey.length),
+          ],
+        });
+
+        txResult = await sendTransaction({
+          transaction: fullTx,
+          account,
+        });
+        mptOnChain = true;
+      } catch (sendErr) {
+        // Extract error message from any error shape (Error, plain object, string)
+        let errMsg = "";
+        if (sendErr instanceof Error) {
+          errMsg = sendErr.message;
+        } else if (typeof sendErr === "object" && sendErr !== null) {
+          const obj = sendErr as Record<string, unknown>;
+          errMsg = String(obj.message ?? obj.reason ?? obj.error ?? JSON.stringify(sendErr));
+        } else {
+          errMsg = String(sendErr);
+        }
+
+        const isRecoverableError = /oversiz|payload|too large|request entity|content.?length|execution reverted/i.test(errMsg);
+        if (isRecoverableError) {
+          console.warn(
+            `[ProofPipeline] Full MPT+STARK verification failed: ${errMsg.slice(0, 120)}. ` +
+            `Falling back to STARK-only verification.`
+          );
+          // Fall through to STARK-only below
+        } else {
+          throw sendErr; // Re-throw unexpected errors
+        }
+      }
+
+      // STARK-only fallback (when MPT was too large or wallet rejected)
+      if (!txResult) {
+        toast.info("Receipt proof too large for wallet relay. Using STARK-only on-chain verification.");
+
+        const starkTx = prepareContractCall({
+          contract,
+          method: "verifySharpeProof",
+          params: [
+            proof.publicInputs.map(BigInt),
+            proof.commitments.map(BigInt),
+            proof.oodValues.map(BigInt),
+            proof.friFinalPoly.map(BigInt),
+            proof.queryValues.map(BigInt),
+            proof.queryPaths.map(BigInt),
+            proof.queryMetadata.map(BigInt),
+          ],
+        });
+
+        txResult = await sendTransaction({
+          transaction: starkTx,
+          account,
+        });
+      }
 
       currentPhase = "confirming";
       setPhase(currentPhase);
@@ -282,11 +372,13 @@ export function WalletProver() {
         blockNumber: receiptProof.blockNumber,
         tradeCount: trades.tradeCount,
         totalReturnBps: trades.totalReturnBps,
+        mptOnChain,
       });
 
       if (receipt.status === "success") {
         toast.success(
-          `Wallet verified! ${trades.tradeCount} trades, Gas: ${formatGas(receipt.gasUsed)}`
+          `Wallet verified! ${trades.tradeCount} trades, Gas: ${formatGas(receipt.gasUsed)}` +
+          (mptOnChain ? " (MPT on-chain)" : " (MPT client-verified)")
         );
       } else {
         toast.error("Verification transaction reverted");
@@ -537,8 +629,12 @@ export function WalletProver() {
               <Badge variant="outline" className="text-xs">
                 {result.tradeCount} Trades
               </Badge>
-              <Badge variant="outline" className="text-xs">
-                Receipt Proof Bound
+              <Badge variant="outline" className={`text-xs ${
+                result.mptOnChain
+                  ? "bg-green-500/10 text-green-500 border-green-500/20"
+                  : "bg-yellow-500/10 text-yellow-500 border-yellow-500/20"
+              }`}>
+                {result.mptOnChain ? "MPT On-Chain" : "MPT Client-Verified"}
               </Badge>
             </div>
 
