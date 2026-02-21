@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:wasm": "bash scripts/build-wasm.sh"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.2.4",
