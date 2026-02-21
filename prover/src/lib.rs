@@ -41,95 +41,14 @@ pub struct ProveProgress {
     pub percent: u8,
 }
 
-/// Evaluate trace polynomials on the LDE domain using barycentric interpolation.
-fn evaluate_trace_on_lde(
-    trace_col: &[U256],
-    trace_domain: &[U256],
-    lde_domain: &[U256],
-) -> Vec<U256> {
-    let n = trace_col.len();
-    let lde_size = lde_domain.len();
-
-    let mut weights = vec![U256::from(1u64); n];
-    for j in 0..n {
-        for k in 0..n {
-            if k != j {
-                let diff = BN254Field::sub(trace_domain[j], trace_domain[k]);
-                weights[j] = BN254Field::mul(weights[j], diff);
-            }
-        }
-        weights[j] = BN254Field::inv(weights[j]);
+/// Horner's method: evaluate polynomial at a single point.
+/// O(n) with only mul/add — no inversions.
+fn eval_poly_at(coeffs: &[U256], x: U256) -> U256 {
+    let mut result = U256::ZERO;
+    for &c in coeffs.iter().rev() {
+        result = BN254Field::add(BN254Field::mul(result, x), c);
     }
-
-    let mut result = Vec::with_capacity(lde_size);
-
-    for i in 0..lde_size {
-        let x = lde_domain[i];
-
-        let mut is_domain_point = false;
-        for j in 0..n {
-            if x == trace_domain[j] {
-                result.push(trace_col[j]);
-                is_domain_point = true;
-                break;
-            }
-        }
-        if is_domain_point {
-            continue;
-        }
-
-        let mut numerator = U256::ZERO;
-        let mut denominator = U256::ZERO;
-
-        for j in 0..n {
-            let diff = BN254Field::sub(x, trace_domain[j]);
-            let diff_inv = BN254Field::inv(diff);
-            let term = BN254Field::mul(weights[j], diff_inv);
-
-            let num_term = BN254Field::mul(term, trace_col[j]);
-            numerator = BN254Field::add(numerator, num_term);
-            denominator = BN254Field::add(denominator, term);
-        }
-
-        result.push(BN254Field::div(numerator, denominator));
-    }
-
     result
-}
-
-/// Evaluate trace polynomial at a single point using barycentric interpolation.
-fn eval_at_point(values: &[U256], domain: &[U256], x: U256) -> U256 {
-    let n = values.len();
-
-    for i in 0..n {
-        if x == domain[i] {
-            return values[i];
-        }
-    }
-
-    let mut weights = vec![U256::from(1u64); n];
-    for j in 0..n {
-        for k in 0..n {
-            if k != j {
-                let diff = BN254Field::sub(domain[j], domain[k]);
-                weights[j] = BN254Field::mul(weights[j], diff);
-            }
-        }
-        weights[j] = BN254Field::inv(weights[j]);
-    }
-
-    let mut numerator = U256::ZERO;
-    let mut denominator = U256::ZERO;
-    for j in 0..n {
-        let diff = BN254Field::sub(x, domain[j]);
-        let diff_inv = BN254Field::inv(diff);
-        let term = BN254Field::mul(weights[j], diff_inv);
-
-        numerator = BN254Field::add(numerator, BN254Field::mul(term, values[j]));
-        denominator = BN254Field::add(denominator, term);
-    }
-
-    BN254Field::div(numerator, denominator)
 }
 
 /// Generate a STARK proof for Sharpe ratio verification.
@@ -179,16 +98,35 @@ pub fn prove_sharpe_with_progress(
     };
     let log_lde_size = log_trace_len + log_blowup;
     let lde_size = 1usize << log_lde_size;
-
-    let trace_domain = get_domain(log_trace_len);
     let lde_domain = get_domain(log_lde_size);
 
-    let trace_lde_0 = evaluate_trace_on_lde(&trace.col_return, &trace_domain, &lde_domain);
-    let trace_lde_1 = evaluate_trace_on_lde(&trace.col_return_sq, &trace_domain, &lde_domain);
-    let trace_lde_2 = evaluate_trace_on_lde(&trace.col_cumulative_return, &trace_domain, &lde_domain);
-    let trace_lde_3 = evaluate_trace_on_lde(&trace.col_cumulative_sq, &trace_domain, &lde_domain);
-    let trace_lde_4 = evaluate_trace_on_lde(&trace.col_trade_count, &trace_domain, &lde_domain);
-    let trace_lde_5 = evaluate_trace_on_lde(&trace.col_dataset_commitment, &trace_domain, &lde_domain);
+    // IFFT each trace column → polynomial coefficients (cached for OOD eval later)
+    let mut coeffs_0 = trace.col_return.clone();
+    domain::ifft(&mut coeffs_0, log_trace_len);
+    let mut coeffs_1 = trace.col_return_sq.clone();
+    domain::ifft(&mut coeffs_1, log_trace_len);
+    let mut coeffs_2 = trace.col_cumulative_return.clone();
+    domain::ifft(&mut coeffs_2, log_trace_len);
+    let mut coeffs_3 = trace.col_cumulative_sq.clone();
+    domain::ifft(&mut coeffs_3, log_trace_len);
+    let mut coeffs_4 = trace.col_trade_count.clone();
+    domain::ifft(&mut coeffs_4, log_trace_len);
+    let mut coeffs_5 = trace.col_dataset_commitment.clone();
+    domain::ifft(&mut coeffs_5, log_trace_len);
+
+    // Zero-pad coefficients and FFT → LDE evaluations
+    let lde_from_coeffs = |coeffs: &[U256]| -> Vec<U256> {
+        let mut padded = coeffs.to_vec();
+        padded.resize(lde_size, U256::ZERO);
+        domain::fft(&mut padded, log_lde_size);
+        padded
+    };
+    let trace_lde_0 = lde_from_coeffs(&coeffs_0);
+    let trace_lde_1 = lde_from_coeffs(&coeffs_1);
+    let trace_lde_2 = lde_from_coeffs(&coeffs_2);
+    let trace_lde_3 = lde_from_coeffs(&coeffs_3);
+    let trace_lde_4 = lde_from_coeffs(&coeffs_4);
+    let trace_lde_5 = lde_from_coeffs(&coeffs_5);
 
     // Step 3: Commit to trace (6-column Merkle)
     on_progress(ProveProgress {
@@ -221,21 +159,17 @@ pub fn prove_sharpe_with_progress(
     let trace_gen = domain_generator(log_trace_len);
     let zg = BN254Field::mul(z, trace_gen);
 
-    // Evaluate 6 columns at z and zg
-    let cols: [&[U256]; 6] = [
-        &trace.col_return[..],
-        &trace.col_return_sq[..],
-        &trace.col_cumulative_return[..],
-        &trace.col_cumulative_sq[..],
-        &trace.col_trade_count[..],
-        &trace.col_dataset_commitment[..],
+    // Evaluate 6 columns at z and zg using Horner on cached coefficients
+    let all_coeffs: [&[U256]; 6] = [
+        &coeffs_0, &coeffs_1, &coeffs_2,
+        &coeffs_3, &coeffs_4, &coeffs_5,
     ];
 
     let mut trace_ood_evals = [U256::ZERO; 6];
     let mut trace_ood_evals_next = [U256::ZERO; 6];
-    for (j, col) in cols.iter().enumerate() {
-        trace_ood_evals[j] = eval_at_point(col, &trace_domain, z);
-        trace_ood_evals_next[j] = eval_at_point(col, &trace_domain, zg);
+    for (j, coeffs) in all_coeffs.iter().enumerate() {
+        trace_ood_evals[j] = eval_poly_at(coeffs, z);
+        trace_ood_evals_next[j] = eval_poly_at(coeffs, zg);
     }
 
     // Draw 9 alphas
@@ -433,4 +367,59 @@ fn compute_sharpe_composition_at_z(
     comp = BN254Field::add(comp, BN254Field::mul(alphas[8], bq3));
 
     comp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mock_data::GmxTradeRecord;
+    use crate::sharpe_trace::SharpeTrace;
+    use std::time::Instant;
+
+    #[test]
+    fn test_200_trades_perf() {
+        let pattern: [i64; 5] = [100, -50, 200, -100, 150];
+        let trades: Vec<GmxTradeRecord> = (0..200)
+            .map(|i| GmxTradeRecord::from_return_bps(pattern[i % 5]))
+            .collect();
+
+        let trace = SharpeTrace::generate(&trades, None);
+        let claimed_sharpe_sq_scaled = trace.compute_sharpe_sq_scaled();
+
+        let start = Instant::now();
+        let proof = prove_sharpe(&trades, claimed_sharpe_sq_scaled, 4, None);
+        let elapsed = start.elapsed();
+
+        println!("200 trades: {:.3}s ({} ms)", elapsed.as_secs_f64(), elapsed.as_millis());
+
+        // Verify proof structure
+        assert_eq!(proof.public_inputs.len(), 4);
+        assert_eq!(proof.public_inputs[0], U256::from(200u64));
+        assert_eq!(proof.public_inputs[2], claimed_sharpe_sq_scaled);
+        assert!(proof.commitments.len() >= 2);
+        assert_eq!(proof.ood_values.len(), 13);
+    }
+
+    #[test]
+    fn test_5000_trades_perf() {
+        let pattern: [i64; 5] = [100, -50, 200, -100, 150];
+        let trades: Vec<GmxTradeRecord> = (0..5000)
+            .map(|i| GmxTradeRecord::from_return_bps(pattern[i % 5]))
+            .collect();
+
+        let trace = SharpeTrace::generate(&trades, None);
+        let claimed_sharpe_sq_scaled = trace.compute_sharpe_sq_scaled();
+
+        let start = Instant::now();
+        let proof = prove_sharpe(&trades, claimed_sharpe_sq_scaled, 4, None);
+        let elapsed = start.elapsed();
+
+        println!("5000 trades: {:.3}s ({} ms)", elapsed.as_secs_f64(), elapsed.as_millis());
+
+        assert_eq!(proof.public_inputs.len(), 4);
+        assert_eq!(proof.public_inputs[0], U256::from(5000u64));
+        assert_eq!(proof.public_inputs[2], claimed_sharpe_sq_scaled);
+        assert!(proof.commitments.len() >= 2);
+        assert_eq!(proof.ood_values.len(), 13);
+    }
 }

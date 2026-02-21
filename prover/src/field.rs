@@ -89,4 +89,36 @@ impl BN254Field {
             a
         }
     }
+
+    /// Montgomery batch inversion: inverts all elements in-place.
+    /// Zero elements remain zero (convention: inv(0) = 0).
+    /// Cost: 1 inversion + 3(n-1) multiplications.
+    pub fn batch_invert(values: &mut [U256]) {
+        let n = values.len();
+        if n == 0 {
+            return;
+        }
+
+        // Forward pass: prefix products (skipping zeros)
+        let mut prefix = vec![U256::from(1u64); n];
+        let mut acc = U256::from(1u64);
+        for i in 0..n {
+            prefix[i] = acc;
+            if values[i] != U256::ZERO {
+                acc = Self::mul(acc, values[i]);
+            }
+        }
+
+        // Single inversion of accumulated product
+        let mut inv_acc = Self::inv(acc);
+
+        // Backward pass: extract individual inverses
+        for i in (0..n).rev() {
+            if values[i] != U256::ZERO {
+                let orig = values[i];
+                values[i] = Self::mul(prefix[i], inv_acc);
+                inv_acc = Self::mul(inv_acc, orig);
+            }
+        }
+    }
 }

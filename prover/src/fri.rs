@@ -69,19 +69,27 @@ pub fn fri_commit(
         let half = current_size / 2;
         let gen = domain::domain_generator(current_log_domain);
 
+        // Precompute inv(2) once and batch-invert all 2x values
+        let inv_two = BN254Field::inv(U256::from(2u64));
+        let two = U256::from(2u64);
+        let mut inv_two_x = Vec::with_capacity(half);
+        let mut x = U256::from(1u64);
+        for _ in 0..half {
+            inv_two_x.push(BN254Field::mul(two, x));
+            x = BN254Field::mul(x, gen);
+        }
+        BN254Field::batch_invert(&mut inv_two_x);
+
         let mut next_evals = Vec::with_capacity(half);
         for i in 0..half {
             let fx = current_evals[i];
             let f_neg_x = current_evals[i + half];
-            let x = domain::evaluate_at(gen, i as u64);
 
             // Fold: (f(x) + f(-x))/2 + alpha * (f(x) - f(-x))/(2x)
-            let two = U256::from(2u64);
             let sum = BN254Field::add(fx, f_neg_x);
-            let even = BN254Field::div(sum, two);
+            let even = BN254Field::mul(sum, inv_two);
             let diff = BN254Field::sub(fx, f_neg_x);
-            let two_x = BN254Field::mul(two, x);
-            let odd = BN254Field::div(diff, two_x);
+            let odd = BN254Field::mul(diff, inv_two_x[i]);
             let folded = BN254Field::add(even, BN254Field::mul(alpha, odd));
 
             next_evals.push(folded);
@@ -97,8 +105,9 @@ pub fn fri_commit(
         current_log_domain -= 1;
     }
 
-    // Convert final evaluations to polynomial coefficients via inverse NTT
-    let final_poly = domain::inverse_ntt(&current_evals, current_log_domain);
+    // Convert final evaluations to polynomial coefficients via IFFT
+    let mut final_poly = current_evals.clone();
+    domain::ifft(&mut final_poly, current_log_domain);
 
     // Commit final polynomial to channel
     for coeff in &final_poly {
