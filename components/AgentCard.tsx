@@ -20,6 +20,8 @@ import type { BotProfile, PipelinePhase, ProofProgress } from "@/lib/bot-data";
 
 const PHASE_LABELS: Record<PipelinePhase, string> = {
   idle: "",
+  "fetching-trades": "Fetching trade data...",
+  "fetching-receipt-proof": "Fetching receipt proof...",
   "loading-wasm": "Loading WASM prover...",
   proving: "Generating STARK proof...",
   "sending-tx": "Sending transaction...",

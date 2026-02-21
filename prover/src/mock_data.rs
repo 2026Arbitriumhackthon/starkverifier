@@ -32,6 +32,26 @@ pub struct GmxTradeRecord {
     pub return_bps: i64,
 }
 
+impl GmxTradeRecord {
+    /// Create a minimal GmxTradeRecord with only return_bps set.
+    /// Used by WASM interface when only return values are provided.
+    pub fn from_return_bps(bps: i64) -> Self {
+        GmxTradeRecord {
+            size_in_usd: U256::ZERO,
+            size_in_tokens: U256::ZERO,
+            collateral_amount: U256::ZERO,
+            is_long: true,
+            entry_price: U256::ZERO,
+            exit_price: U256::ZERO,
+            realized_pnl: U256::ZERO,
+            borrowing_fee: U256::ZERO,
+            funding_fee: U256::ZERO,
+            duration_seconds: 0,
+            return_bps: bps,
+        }
+    }
+}
+
 /// A mock trading bot with hardcoded trades.
 pub struct MockBot {
     pub name: &'static str,

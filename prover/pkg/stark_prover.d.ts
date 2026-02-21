@@ -15,6 +15,23 @@ export class StarkProverWasm {
      */
     generateSharpeProof(bot_id: string, num_queries: number): string;
     /**
+     * Generate a Sharpe proof from return_bps array (no commitment).
+     *
+     * returns_bps: array of trade returns in basis points
+     * num_queries: number of FRI queries
+     * callback: JS function(stage, detail, percent) for progress updates
+     */
+    generateSharpeProofFromReturns(returns_bps: Int32Array, num_queries: number, callback: Function): string;
+    /**
+     * Generate a Sharpe proof from return_bps array with a dataset commitment.
+     *
+     * returns_bps: array of trade returns in basis points
+     * dataset_commitment_hex: "0x..." hex string of the dataset commitment (or empty for no commitment)
+     * num_queries: number of FRI queries
+     * callback: JS function(stage, detail, percent) for progress updates
+     */
+    generateSharpeProofWithCommitment(returns_bps: Int32Array, dataset_commitment_hex: string, num_queries: number, callback: Function): string;
+    /**
      * Generate a Sharpe proof with progress updates via a JS callback.
      */
     generateSharpeProofWithProgress(bot_id: string, num_queries: number, callback: Function): string;
@@ -27,6 +44,8 @@ export interface InitOutput {
     readonly memory: WebAssembly.Memory;
     readonly __wbg_starkproverwasm_free: (a: number, b: number) => void;
     readonly starkproverwasm_generateSharpeProof: (a: number, b: number, c: number, d: number) => [number, number];
+    readonly starkproverwasm_generateSharpeProofFromReturns: (a: number, b: number, c: number, d: number, e: any) => [number, number];
+    readonly starkproverwasm_generateSharpeProofWithCommitment: (a: number, b: number, c: number, d: number, e: number, f: number, g: any) => [number, number];
     readonly starkproverwasm_generateSharpeProofWithProgress: (a: number, b: number, c: number, d: number, e: any) => [number, number];
     readonly starkproverwasm_new: () => number;
     readonly __wbindgen_exn_store: (a: number) => void;
@@ -58,4 +77,4 @@ export function initSync(module: { module: SyncInitInput } | SyncInitInput): Ini
  *
  * @returns {Promise<InitOutput>}
  */
-export default function __wbg_init (module_or_path: { module_or_path: InitInput | Promise<InitInput> } | InitInput | Promise<InitInput>): Promise<InitOutput>;
+export default function __wbg_init (module_or_path?: { module_or_path: InitInput | Promise<InitInput> } | InitInput | Promise<InitInput>): Promise<InitOutput>;

@@ -9,7 +9,7 @@
 //!   TC1: ret_sq = ret * ret
 //!   TC2: cum_sq_next = cum_sq + ret_sq_next
 //!   TC3: trade_count_next = trade_count (immutability)
-//!   TC4: 0 (dataset_commitment placeholder)
+//!   TC4: dataset_commitment_next = dataset_commitment (immutability)
 //!
 //! Boundary constraints (4):
 //!   BC0: cum_ret[0] = ret[0]                                          (at first row)
@@ -66,8 +66,8 @@ pub fn evaluate_transition(current: [Fp; 6], next: [Fp; 6]) -> [Fp; 5] {
     // TC3: trade_count_next - trade_count = 0 (immutability)
     let tc3 = BN254Field::sub(next[4], current[4]);
 
-    // TC4: 0 (placeholder for dataset_commitment)
-    let tc4 = Fp::ZERO;
+    // TC4: dataset_commitment_next - dataset_commitment = 0 (immutability)
+    let tc4 = BN254Field::sub(next[5], current[5]);
 
     [tc0, tc1, tc2, tc3, tc4]
 }
@@ -178,10 +178,20 @@ mod tests {
     }
 
     #[test]
-    fn test_sharpe_transition_tc4_always_zero() {
+    fn test_sharpe_transition_tc4_immutability() {
         let (current, next) = make_valid_sharpe_pair();
         let constraints = evaluate_transition(current, next);
-        assert_eq!(constraints[4], Fp::ZERO, "TC4 placeholder should always be zero");
+        // Both current[5] and next[5] are Fp::ZERO, so 0-0=0
+        assert_eq!(constraints[4], Fp::ZERO, "TC4 should be zero when commitment is constant");
+    }
+
+    #[test]
+    fn test_sharpe_transition_tc4_violated() {
+        let (current, mut next) = make_valid_sharpe_pair();
+        // Change dataset_commitment in next row
+        next[5] = Fp::from_u256(U256::from(42u64));
+        let constraints = evaluate_transition(current, next);
+        assert_ne!(constraints[4], Fp::ZERO, "TC4 should be nonzero when commitment changes");
     }
 
     #[test]

@@ -19,7 +19,7 @@ path = "src/main.rs"
 
 [features]
 default = ["cli"]
-cli = ["clap"]
+cli = ["clap", "dep:reqwest", "dep:tokio", "dep:serde", "dep:serde_json", "dep:alloy-sol-types"]
 wasm = ["wasm-bindgen", "js-sys", "getrandom"]
 
 [dependencies]
@@ -31,6 +31,11 @@ tiny-keccak = { version = "2.0", features = ["keccak"] }
 
 # CLI-only dependencies
 clap = { version = "4", features = ["derive"], optional = true }
+reqwest = { version = "0.12", features = ["json"], optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"], optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+alloy-sol-types = { version = "0.8", optional = true }
 
 # WASM-only dependencies
 wasm-bindgen = { version = "0.2", optional = true }
