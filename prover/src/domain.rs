@@ -42,31 +42,89 @@ pub fn get_domain(log_size: u32) -> Vec<U256> {
     domain
 }
 
-/// Convert evaluations on a domain to polynomial coefficients (inverse NTT).
-///
-/// Given evaluations [f(1), f(ω), f(ω²), ..., f(ω^{n-1})] on a domain with
-/// generator ω of order n, computes coefficients [c_0, c_1, ..., c_{n-1}]
-/// such that f(x) = c_0 + c_1*x + c_2*x² + ... + c_{n-1}*x^{n-1}.
-///
-/// Uses the formula: c_k = (1/n) * Σ_{j=0}^{n-1} e_j * ω^{-jk}
-pub fn inverse_ntt(evals: &[U256], log_domain_size: u32) -> Vec<U256> {
-    let n = evals.len();
-    assert_eq!(n, 1 << log_domain_size);
-    let gen = domain_generator(log_domain_size);
-    let gen_inv = BN254Field::inv(gen);
-    let n_inv = BN254Field::inv(U256::from(n as u64));
-
-    let mut coeffs = Vec::with_capacity(n);
-    for k in 0..n {
-        let mut c_k = U256::ZERO;
-        for j in 0..n {
-            let exp = ((j as u64) * (k as u64)) % (n as u64);
-            let omega_inv_jk = BN254Field::pow(gen_inv, U256::from(exp));
-            c_k = BN254Field::add(c_k, BN254Field::mul(evals[j], omega_inv_jk));
+/// Bit-reversal permutation (in-place).
+fn bit_reverse_permutation(a: &mut [U256], log_n: u32) {
+    let n = a.len();
+    for i in 0..n {
+        let j = (i as u32).reverse_bits() >> (32 - log_n);
+        if i < j as usize {
+            a.swap(i, j as usize);
         }
-        coeffs.push(BN254Field::mul(c_k, n_inv));
     }
-    coeffs
+}
+
+/// Radix-2 Cooley-Tukey FFT (iterative, in-place).
+///
+/// Transforms polynomial coefficients to evaluations on the domain
+/// {1, ω, ω², ..., ω^{n-1}} where ω = domain_generator(log_size).
+pub fn fft(coeffs: &mut [U256], log_size: u32) {
+    let n = coeffs.len();
+    assert_eq!(n, 1 << log_size);
+    if n == 1 {
+        return;
+    }
+
+    bit_reverse_permutation(coeffs, log_size);
+
+    for s in 0..log_size {
+        let m = 1usize << (s + 1);
+        let half_m = m / 2;
+        let w_m = domain_generator(s + 1);
+
+        let mut k = 0;
+        while k < n {
+            let mut w = U256::from(1u64);
+            for j in 0..half_m {
+                let u = coeffs[k + j];
+                let t = BN254Field::mul(w, coeffs[k + j + half_m]);
+                coeffs[k + j] = BN254Field::add(u, t);
+                coeffs[k + j + half_m] = BN254Field::sub(u, t);
+                w = BN254Field::mul(w, w_m);
+            }
+            k += m;
+        }
+    }
+}
+
+/// Inverse FFT: evaluations on domain → polynomial coefficients (in-place).
+///
+/// Given evaluations [f(1), f(ω), f(ω²), ..., f(ω^{n-1})], computes
+/// coefficients [c_0, c_1, ..., c_{n-1}] such that
+/// f(x) = c_0 + c_1*x + ... + c_{n-1}*x^{n-1}.
+pub fn ifft(evals: &mut [U256], log_size: u32) {
+    let n = evals.len();
+    assert_eq!(n, 1 << log_size);
+    if n == 1 {
+        return;
+    }
+
+    bit_reverse_permutation(evals, log_size);
+
+    for s in 0..log_size {
+        let m = 1usize << (s + 1);
+        let half_m = m / 2;
+        // Use inverse generator for IFFT
+        let w_m = BN254Field::inv(domain_generator(s + 1));
+
+        let mut k = 0;
+        while k < n {
+            let mut w = U256::from(1u64);
+            for j in 0..half_m {
+                let u = evals[k + j];
+                let t = BN254Field::mul(w, evals[k + j + half_m]);
+                evals[k + j] = BN254Field::add(u, t);
+                evals[k + j + half_m] = BN254Field::sub(u, t);
+                w = BN254Field::mul(w, w_m);
+            }
+            k += m;
+        }
+    }
+
+    // Multiply by 1/n
+    let n_inv = BN254Field::inv(U256::from(n as u64));
+    for val in evals.iter_mut() {
+        *val = BN254Field::mul(*val, n_inv);
+    }
 }
 
 /// Get coset domain: offset * g^i for each i.

@@ -175,14 +175,14 @@ function decodeInt256(value: bigint): bigint {
  * @param rpcUrl - Arbitrum RPC URL
  * @param walletAddress - Trader wallet address (0x...)
  * @param networkId - Network identifier ("arbitrum-one")
- * @param maxTrades - Maximum number of recent trades to use for Sharpe (default 200)
+ * @param maxTrades - Maximum number of recent trades to use for Sharpe (default 5000)
  * @param blocksBack - Number of blocks to search back (default ~90 days, Arbitrum ~0.25s/block)
  */
 export async function fetchWalletTrades(
   rpcUrl: string,
   walletAddress: string,
   networkId: string,
-  maxTrades: number = 200,
+  maxTrades: number = 5000,
   blocksBack: number = 31_000_000,
 ): Promise<WalletTradeResult> {
   const emitterAddress = GMX_EVENT_EMITTER[networkId];
