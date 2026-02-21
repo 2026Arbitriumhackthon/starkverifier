@@ -6,19 +6,22 @@ import type { StarkProofJSON } from "./contracts";
 import type { ProofProgress } from "./bot-data";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let cachedModule: any = null;
+let loadPromise: Promise<any> | null = null;
 
 /**
  * Dynamically import and initialize the WASM prover module.
- * Caches the module after first load.
+ * Uses promise caching to prevent race conditions on concurrent calls.
  */
 export async function loadWasmProver() {
-  if (cachedModule) return cachedModule;
-
-  const mod = await import("@/prover/pkg/stark_prover");
-  await mod.default();
-  cachedModule = mod;
-  return mod;
+  if (!loadPromise) {
+    loadPromise = (async () => {
+      const mod = await import("@/prover/pkg/stark_prover");
+      const wasmUrl = new URL("@/prover/pkg/stark_prover_bg.wasm", import.meta.url);
+      await mod.default(wasmUrl);
+      return mod;
+    })();
+  }
+  return loadPromise;
 }
 
 /**
