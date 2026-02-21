@@ -131,6 +131,82 @@ pub fn compute_dataset_commitment_onchain(
     Fp::from_u256(raw)
 }
 
+/// Decode flattened U256 words back to Vec<Vec<u8>> proof nodes.
+///
+/// Format: [num_nodes, len_0, len_1, ..., len_{n-1}, packed_data_words...]
+/// The packed data words contain all node bytes concatenated, padded to 32-byte words.
+pub fn decode_proof_nodes(words: &[U256], total_len: usize) -> Option<Vec<Vec<u8>>> {
+    if words.is_empty() {
+        return None;
+    }
+
+    let num_nodes = words[0].as_limbs()[0] as usize;
+    if num_nodes == 0 || words.len() < 1 + num_nodes {
+        return None;
+    }
+
+    // Read node lengths from header
+    let mut node_lengths = Vec::with_capacity(num_nodes);
+    for i in 0..num_nodes {
+        node_lengths.push(words[1 + i].as_limbs()[0] as usize);
+    }
+
+    // Verify total length consistency
+    let computed_total: usize = node_lengths.iter().sum();
+    if computed_total != total_len {
+        return None;
+    }
+
+    // Decode packed data from remaining words
+    let data_words = &words[1 + num_nodes..];
+    let mut all_data = Vec::with_capacity(total_len);
+    for word in data_words {
+        let word_bytes = word.to_be_bytes::<32>();
+        all_data.extend_from_slice(&word_bytes);
+    }
+    all_data.truncate(total_len);
+
+    // Split data into individual nodes by their lengths
+    let mut nodes = Vec::with_capacity(num_nodes);
+    let mut offset = 0;
+    for len in &node_lengths {
+        if offset + len > all_data.len() {
+            return None;
+        }
+        nodes.push(all_data[offset..offset + len].to_vec());
+        offset += len;
+    }
+
+    Some(nodes)
+}
+
+/// Compute merkle root for a column where all leaves have the same value.
+///
+/// Uses O(log n) keccak hashes (constant-leaf tree optimization).
+/// For a tree of size 2^log_size, if every leaf = v, then:
+///   level 0: leaf = v
+///   level 1: hash(v, v)
+///   level 2: hash(hash(v,v), hash(v,v))
+///   ...
+pub fn compute_constant_merkle_root(leaf_value: Fp, log_size: u32) -> Fp {
+    let mut current = leaf_value;
+    for _ in 0..log_size {
+        current = crate::keccak_hash_two(current, current);
+    }
+    current
+}
+
+/// Decode U256 words to a flat byte array, truncating to actual_len.
+pub fn decode_u256_words(words: &[U256], actual_len: usize) -> Vec<u8> {
+    let mut result = Vec::with_capacity(actual_len);
+    for word in words {
+        let word_bytes = word.to_be_bytes::<32>();
+        result.extend_from_slice(&word_bytes);
+    }
+    result.truncate(actual_len);
+    result
+}
+
 /// Convert bytes to nibbles (half-bytes).
 fn bytes_to_nibbles(data: &[u8]) -> Vec<u8> {
     let mut nibbles = Vec::with_capacity(data.len() * 2);
@@ -296,5 +372,84 @@ mod tests {
         let c1 = compute_dataset_commitment_onchain(block_hash, &receipts_root, receipt_rlp);
         let c2 = compute_dataset_commitment_onchain(block_hash, &receipts_root, receipt_rlp);
         assert_eq!(c1, c2);
+    }
+
+    #[test]
+    fn test_decode_proof_nodes_basic() {
+        // Create a simple proof with 2 nodes: [0x01, 0x02] and [0x03, 0x04, 0x05]
+        let node1 = vec![0x01u8, 0x02];
+        let node2 = vec![0x03u8, 0x04, 0x05];
+        let total_len = node1.len() + node2.len(); // 5
+
+        // Header: [num_nodes=2, len_0=2, len_1=3]
+        let mut words = vec![
+            U256::from(2u64),  // num_nodes
+            U256::from(2u64),  // len_0
+            U256::from(3u64),  // len_1
+        ];
+
+        // Pack data into U256 word (all 5 bytes fit in one word)
+        let mut data_buf = [0u8; 32];
+        data_buf[0] = 0x01; data_buf[1] = 0x02;
+        data_buf[2] = 0x03; data_buf[3] = 0x04; data_buf[4] = 0x05;
+        words.push(U256::from_be_bytes(data_buf));
+
+        let result = decode_proof_nodes(&words, total_len).unwrap();
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0], vec![0x01, 0x02]);
+        assert_eq!(result[1], vec![0x03, 0x04, 0x05]);
+    }
+
+    #[test]
+    fn test_decode_proof_nodes_empty() {
+        assert!(decode_proof_nodes(&[], 0).is_none());
+    }
+
+    #[test]
+    fn test_decode_proof_nodes_length_mismatch() {
+        let words = vec![
+            U256::from(1u64),  // num_nodes
+            U256::from(5u64),  // len_0 = 5
+        ];
+        // total_len doesn't match
+        assert!(decode_proof_nodes(&words, 3).is_none());
+    }
+
+    #[test]
+    fn test_compute_constant_merkle_root_log0() {
+        // log_size=0 → single leaf, root = leaf
+        let leaf = Fp::from_u256(U256::from(42u64));
+        let root = compute_constant_merkle_root(leaf, 0);
+        assert_eq!(root, leaf);
+    }
+
+    #[test]
+    fn test_compute_constant_merkle_root_log1() {
+        // log_size=1 → 2 leaves, root = hash(leaf, leaf)
+        let leaf = Fp::from_u256(U256::from(42u64));
+        let root = compute_constant_merkle_root(leaf, 1);
+        let expected = crate::keccak_hash_two(leaf, leaf);
+        assert_eq!(root, expected);
+    }
+
+    #[test]
+    fn test_compute_constant_merkle_root_log2() {
+        // log_size=2 → 4 leaves, root = hash(hash(leaf,leaf), hash(leaf,leaf))
+        let leaf = Fp::from_u256(U256::from(42u64));
+        let root = compute_constant_merkle_root(leaf, 2);
+        let l1 = crate::keccak_hash_two(leaf, leaf);
+        let expected = crate::keccak_hash_two(l1, l1);
+        assert_eq!(root, expected);
+    }
+
+    #[test]
+    fn test_decode_u256_words() {
+        let mut word_bytes = [0u8; 32];
+        word_bytes[0] = 0xAB;
+        word_bytes[1] = 0xCD;
+        word_bytes[2] = 0xEF;
+        let words = vec![U256::from_be_bytes(word_bytes)];
+        let result = decode_u256_words(&words, 3);
+        assert_eq!(result, vec![0xAB, 0xCD, 0xEF]);
     }
 }

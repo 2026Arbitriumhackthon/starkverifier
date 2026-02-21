@@ -68,11 +68,13 @@ impl StarkVerifier {
     /// Verify a STARK proof with receipt-based data provenance.
     ///
     /// Performs:
-    /// 1. MPT proof verification (receiptsRoot → receipt data)
-    /// 2. Dataset commitment computation and binding check
+    /// 1. MPT proof verification (receipt ∈ receiptsRoot) → extracts receipt RLP from leaf
+    /// 2. Dataset commitment computation from MPT-verified receipt (no separate receipt_rlp needed)
     /// 3. Full STARK proof verification
+    /// 4. Cross-check: pi[3] == merkle_root of constant commitment column
     ///
-    /// Receipt proof params are passed as flattened byte arrays encoded in U256 words.
+    /// The receipt RLP is NOT passed separately — it is extracted directly from the
+    /// MPT proof leaf, eliminating data redundancy and reducing calldata size.
     pub fn verify_sharpe_proof_with_receipt(
         &self,
         // STARK proof params (same as verify_sharpe_proof)
@@ -83,33 +85,52 @@ impl StarkVerifier {
         query_values: Vec<U256>,
         query_paths: Vec<U256>,
         query_metadata: Vec<U256>,
-        // Receipt proof params
+        // Receipt proof params (no receipt_rlp — extracted from MPT leaf)
         block_hash: U256,
-        receipts_root: Vec<U256>,    // 1 element (32 bytes as U256)
-        receipt_rlp: Vec<U256>,      // flattened receipt data (padded to 32-byte words)
-        receipt_rlp_len: U256,       // actual byte length of receipt_rlp
+        receipts_root: Vec<U256>,
+        receipt_proof_nodes: Vec<U256>,
+        receipt_proof_nodes_len: U256,
+        receipt_key: Vec<U256>,
+        receipt_key_len: U256,
     ) -> bool {
-        // Step 1: Decode receiptsRoot
+        // Step 1: Decode parameters
         if receipts_root.is_empty() {
             return false;
         }
         let receipts_root_bytes: [u8; 32] = receipts_root[0].to_be_bytes();
 
-        // Step 2: Decode receipt_rlp from U256 words
-        let rlp_len = receipt_rlp_len.as_limbs()[0] as usize;
-        let mut receipt_rlp_bytes = Vec::with_capacity(rlp_len);
-        for word in &receipt_rlp {
-            let word_bytes = word.to_be_bytes::<32>();
-            receipt_rlp_bytes.extend_from_slice(&word_bytes);
-        }
-        receipt_rlp_bytes.truncate(rlp_len);
+        let nodes_len = receipt_proof_nodes_len.as_limbs()[0] as usize;
+        let key_len = receipt_key_len.as_limbs()[0] as usize;
+        let key_bytes = mpt::decode_u256_words(&receipt_key, key_len);
 
-        // Step 3: Compute expected dataset_commitment
+        // Step 2: Decode and verify MPT proof — receipt ∈ receiptsRoot
+        let proof_nodes = match mpt::decode_proof_nodes(&receipt_proof_nodes, nodes_len) {
+            Some(nodes) => nodes,
+            None => return false,
+        };
+
+        let verified_value = mpt::verify_mpt_proof(
+            &receipts_root_bytes,
+            &key_bytes,
+            &proof_nodes,
+        );
+
+        // Extract receipt RLP directly from the MPT leaf — no separate parameter needed
+        let receipt_rlp_bytes = match verified_value {
+            None => return false,
+            Some(leaf) => leaf,
+        };
+
+        // Step 3: Compute expected dataset_commitment from MPT-verified receipt
         let expected_commitment = mpt::compute_dataset_commitment_onchain(
             block_hash,
             &receipts_root_bytes,
             &receipt_rlp_bytes,
         );
+
+        if expected_commitment == Fp::ZERO {
+            return false;
+        }
 
         // Step 4: Verify STARK proof
         let stark_valid = stark::verify_sharpe_stark(
@@ -126,28 +147,30 @@ impl StarkVerifier {
             return false;
         }
 
-        // Step 5: Verify binding — pi[3] (merkle_root of commitment column)
-        // should reflect the expected_commitment.
-        // The commitment column merkle root in public_inputs[3] is computed
-        // from a column where every row = dataset_commitment.
-        // We verify the commitment is non-zero (was actually set).
-        if public_inputs.len() < 4 {
+        // Step 5: Cross-check — pi[3] == merkle_root of constant commitment column
+        if public_inputs.len() < 4 || query_metadata.is_empty() {
             return false;
         }
 
         let pi3 = Fp::from_u256(public_inputs[3]);
 
-        // For a column of constant values, the merkle root is deterministic.
-        // We verify the commitment was bound (non-zero check).
-        if expected_commitment == Fp::ZERO {
+        // Extract log_trace_len from query_metadata[2]
+        // query_metadata layout: [num_queries, num_fri_layers, log_trace_len, ...]
+        if query_metadata.len() < 3 {
             return false;
         }
+        let log_trace_len = query_metadata[2].as_limbs()[0] as u32;
 
-        // The STARK proof is valid and the commitment was bound.
-        // Full binding verification (pi[3] == merkle_root(commitment_column))
-        // is inherently verified by the STARK proof itself — if the commitment
-        // column doesn't match pi[3], the STARK verification fails.
-        let _ = pi3; // Used by STARK verification above
+        // Compute expected merkle root: for a column where every leaf = expected_commitment,
+        // the merkle root is deterministic and can be computed in O(log n) hashes.
+        let expected_merkle_root = mpt::compute_constant_merkle_root(
+            expected_commitment,
+            log_trace_len,
+        );
+
+        if pi3 != expected_merkle_root {
+            return false;
+        }
 
         true
     }
