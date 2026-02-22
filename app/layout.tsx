@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "ProofScore | On-Chain Agent Evaluation",
+  title: "RealBot | On-Chain Agent Evaluation",
   description:
     "STARK-verified trading agent evaluation on Arbitrum Stylus. Sharpe ratio proofs with zero-knowledge guarantees.",
   keywords: [
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "hodduk" }],
   openGraph: {
-    title: "ProofScore | On-Chain Agent Evaluation",
+    title: "RealBot | On-Chain Agent Evaluation",
     description: "STARK-verified trading agent evaluation on Arbitrum Stylus",
     type: "website",
   },
