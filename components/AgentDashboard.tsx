@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useActiveAccount } from "thirdweb/react";
 import { prepareContractCall, sendTransaction, waitForReceipt } from "thirdweb";
 import { toast } from "sonner";
@@ -31,6 +31,7 @@ import {
   type PipelinePhase,
   type ProofProgress,
   type VerificationRecord,
+  type StepTiming,
 } from "@/lib/bot-data";
 import { client } from "@/lib/client";
 import { arbitrumSepolia } from "@/lib/chains";
@@ -43,6 +44,22 @@ export function AgentDashboard() {
   const [records, setRecords] = useState<VerificationRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [errorAtStep, setErrorAtStep] = useState<number | undefined>(undefined);
+  const [stepTimings, setStepTimings] = useState<Record<number, StepTiming>>({});
+  const stepTimingsRef = useRef<Record<number, StepTiming>>({});
+
+  const recordStepStart = useCallback((stepId: number) => {
+    const timing: StepTiming = { startTime: performance.now() };
+    stepTimingsRef.current = { ...stepTimingsRef.current, [stepId]: timing };
+    setStepTimings({ ...stepTimingsRef.current });
+  }, []);
+
+  const recordStepEnd = useCallback((stepId: number) => {
+    const existing = stepTimingsRef.current[stepId];
+    if (!existing) return;
+    const updated: StepTiming = { ...existing, endTime: performance.now() };
+    stepTimingsRef.current = { ...stepTimingsRef.current, [stepId]: updated };
+    setStepTimings({ ...stepTimingsRef.current });
+  }, []);
 
   // Map phase to step number for error tracking
   const getActiveStep = useCallback((p: PipelinePhase, prog: ProofProgress | null): number => {
@@ -72,6 +89,8 @@ export function AgentDashboard() {
       setProgress(null);
       setError(null);
       setErrorAtStep(undefined);
+      stepTimingsRef.current = {};
+      setStepTimings({});
 
       let currentPhase: PipelinePhase = "idle";
       let currentProgress: ProofProgress | null = null;
@@ -80,23 +99,48 @@ export function AgentDashboard() {
         // Phase 1: Load WASM
         currentPhase = "loading-wasm";
         setPhase(currentPhase);
+        recordStepStart(1);
         await loadWasmProver();
+        recordStepEnd(1);
 
-        // Phase 2: Generate proof
+        // Phase 2: Generate proof (steps 2-4 tracked via progress callback)
         currentPhase = "proving";
         setPhase(currentPhase);
+        recordStepStart(2);
+        let lastProvingStage = "";
         const proof: StarkProofJSON = await generateSharpeProof(
           bot.id,
           NUM_QUERIES,
           (p) => {
             currentProgress = p;
             setProgress(p);
+
+            // Track stage transitions for timing
+            if (p.stage !== lastProvingStage) {
+              const prevStage = lastProvingStage;
+              lastProvingStage = p.stage;
+
+              if (p.stage === "commit" || p.stage === "compose") {
+                if (prevStage === "trace") {
+                  recordStepEnd(2);
+                  recordStepStart(3);
+                }
+              } else if (p.stage === "fri") {
+                if (prevStage === "commit" || prevStage === "compose") {
+                  recordStepEnd(3);
+                  recordStepStart(4);
+                }
+              } else if (p.stage === "done") {
+                recordStepEnd(4);
+              }
+            }
           }
         );
 
         // Phase 3: Send transaction
         currentPhase = "sending-tx";
         setPhase(currentPhase);
+        recordStepStart(5);
         const contract = getStarkVerifierContract();
         const tx = prepareContractCall({
           contract,
@@ -131,6 +175,8 @@ export function AgentDashboard() {
           receipt.transactionHash
         );
 
+        recordStepEnd(5);
+
         const gasUsed = arbReceipt?.gasUsed ?? receipt.gasUsed;
 
         const record: VerificationRecord = {
@@ -163,7 +209,7 @@ export function AgentDashboard() {
         setProgress(null);
       }
     },
-    [account, getActiveStep]
+    [account, getActiveStep, recordStepStart, recordStepEnd]
   );
 
   return (
@@ -284,6 +330,7 @@ export function AgentDashboard() {
             records={records}
             verifyingBotId={verifyingBotId}
             onVerify={handleVerify}
+            stepTimings={stepTimings}
           />
         </TabsContent>
 
@@ -292,7 +339,13 @@ export function AgentDashboard() {
         </TabsContent>
 
         <TabsContent value="comparison" className="mt-6">
-          <GasComparison />
+          <GasComparison
+              records={records}
+              verifyingBotId={verifyingBotId}
+              onVerify={handleVerify}
+              phase={phase}
+              stepTimings={stepTimings}
+            />
         </TabsContent>
       </Tabs>
     </section>

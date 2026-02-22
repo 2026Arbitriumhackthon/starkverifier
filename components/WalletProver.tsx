@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useActiveAccount } from "thirdweb/react";
 import { prepareContractCall, sendTransaction, waitForReceipt } from "thirdweb";
 import { toast } from "sonner";
@@ -29,9 +29,11 @@ import {
 } from "lucide-react";
 import {
   deriveWalletPipelineSteps,
+  formatDuration,
   type PipelinePhase,
   type ProofProgress,
   type PipelineStepStatus,
+  type StepTiming,
   NUM_QUERIES,
   ARBISCAN_TX_URL,
 } from "@/lib/bot-data";
@@ -86,7 +88,118 @@ const WALLET_STEP_ICONS = [
   Globe,         // 7. On-Chain Verify
 ];
 
-/* ── Sub-components ──────────────────────────────── */
+/* ── useElapsedTime: 60fps real-time counter ─────── */
+
+function useElapsedTime(startTime: number | undefined, isActive: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!isActive || startTime === undefined) {
+      setElapsed(0);
+      return;
+    }
+
+    const tick = () => {
+      setElapsed(performance.now() - startTime);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [startTime, isActive]);
+
+  return elapsed;
+}
+
+/* ── StepProgressBar ─────────────────────────────── */
+
+function StepProgressBar({
+  status,
+  progressPercent,
+}: {
+  status: PipelineStepStatus;
+  progressPercent?: number;
+}) {
+  if (status === "pending" || status === "error") return null;
+
+  if (status === "done") {
+    return (
+      <div className="mt-1.5 h-1 w-full rounded-full bg-green-500/20 overflow-hidden">
+        <div className="h-full w-full rounded-full bg-green-500 transition-all duration-300" />
+      </div>
+    );
+  }
+
+  // active
+  if (progressPercent !== undefined && progressPercent > 0) {
+    return (
+      <div className="mt-1.5 h-1 w-full rounded-full bg-orange-500/10 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-orange-500 to-purple-600 transition-all duration-200"
+          style={{ width: `${Math.min(progressPercent, 100)}%` }}
+        />
+      </div>
+    );
+  }
+
+  // Indeterminate
+  return (
+    <div className="mt-1.5 h-1 w-full rounded-full bg-orange-500/10 overflow-hidden">
+      <div
+        className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-500 to-purple-600"
+        style={{ animation: "slide-indeterminate 2s ease-in-out infinite" }}
+      />
+    </div>
+  );
+}
+
+/* ── TimingBadge ─────────────────────────────────── */
+
+function TimingBadge({
+  status,
+  timing,
+}: {
+  status: PipelineStepStatus;
+  timing?: StepTiming;
+}) {
+  const isActive = status === "active" && timing?.startTime !== undefined && timing?.endTime === undefined;
+  const elapsed = useElapsedTime(timing?.startTime, isActive);
+
+  if (!timing) return null;
+
+  if (status === "done" && timing.endTime !== undefined) {
+    const duration = timing.endTime - timing.startTime;
+    return (
+      <span className="ml-2 text-xs font-mono text-green-500">
+        {formatDuration(duration)}
+      </span>
+    );
+  }
+
+  if (status === "active" && isActive) {
+    return (
+      <span className="ml-2 text-xs font-mono text-orange-500 tabular-nums">
+        {formatDuration(elapsed)}
+      </span>
+    );
+  }
+
+  if (status === "error" && timing.startTime) {
+    const duration = timing.endTime
+      ? timing.endTime - timing.startTime
+      : performance.now() - timing.startTime;
+    return (
+      <span className="ml-2 text-xs font-mono text-red-500">
+        {formatDuration(duration)}
+      </span>
+    );
+  }
+
+  return null;
+}
+
+/* ── StepIcon ────────────────────────────────────── */
 
 function StepIcon({
   status,
@@ -125,6 +238,51 @@ function StepIcon({
   );
 }
 
+/* ── TotalPipelineTimer ──────────────────────────── */
+
+function TotalPipelineTimer({
+  stepTimings,
+  isRunning,
+}: {
+  stepTimings: Record<number, StepTiming>;
+  isRunning: boolean;
+}) {
+  const entries = Object.values(stepTimings);
+  if (entries.length === 0) return null;
+
+  const earliest = Math.min(...entries.map((t) => t.startTime));
+  const allDone = entries.length > 0 && entries.every((t) => t.endTime !== undefined);
+
+  const isActive = isRunning && !allDone;
+  const elapsed = useElapsedTime(earliest, isActive);
+
+  if (allDone) {
+    const latest = Math.max(...entries.map((t) => t.endTime!));
+    const totalMs = latest - earliest;
+    return (
+      <div className="border-t border-border pt-3 mt-1 flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Total Pipeline Time</span>
+        <span className="font-mono text-green-500 font-medium">
+          {formatDuration(totalMs)}
+        </span>
+      </div>
+    );
+  }
+
+  if (isActive) {
+    return (
+      <div className="border-t border-border pt-3 mt-1 flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Total Pipeline Time</span>
+        <span className="font-mono text-orange-500 font-medium tabular-nums">
+          {formatDuration(elapsed)}
+        </span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 /* ── Main Component ──────────────────────────────── */
 
 export function WalletProver() {
@@ -140,6 +298,10 @@ export function WalletProver() {
   const [error, setError] = useState<string | null>(null);
   const [errorAtStep, setErrorAtStep] = useState<number | undefined>();
   const [isRunning, setIsRunning] = useState(false);
+
+  // Step timing state
+  const [stepTimings, setStepTimings] = useState<Record<number, StepTiming>>({});
+  const stepTimingsRef = useRef<Record<number, StepTiming>>({});
 
   // Trade data state (shown after fetch)
   const [tradeData, setTradeData] = useState<WalletTradeResult | null>(null);
@@ -160,6 +322,20 @@ export function WalletProver() {
 
   const isValidAddress =
     walletAddress.startsWith("0x") && walletAddress.length === 42;
+
+  const recordStepStart = useCallback((stepId: number) => {
+    const timing: StepTiming = { startTime: performance.now() };
+    stepTimingsRef.current = { ...stepTimingsRef.current, [stepId]: timing };
+    setStepTimings({ ...stepTimingsRef.current });
+  }, []);
+
+  const recordStepEnd = useCallback((stepId: number) => {
+    const existing = stepTimingsRef.current[stepId];
+    if (!existing) return;
+    const updated: StepTiming = { ...existing, endTime: performance.now() };
+    stepTimingsRef.current = { ...stepTimingsRef.current, [stepId]: updated };
+    setStepTimings({ ...stepTimingsRef.current });
+  }, []);
 
   const getActiveStep = useCallback(
     (p: PipelinePhase, prog: ProofProgress | null): number => {
@@ -202,6 +378,8 @@ export function WalletProver() {
     setErrorAtStep(undefined);
     setResult(null);
     setTradeData(null);
+    stepTimingsRef.current = {};
+    setStepTimings({});
 
     let currentPhase: PipelinePhase = "idle";
     let currentProgress: ProofProgress | null = null;
@@ -210,6 +388,7 @@ export function WalletProver() {
       // Step 1: Fetch GMX trades for the wallet
       currentPhase = "fetching-trades";
       setPhase(currentPhase);
+      recordStepStart(1);
       const trades = await fetchWalletTrades(
         network.rpcUrl,
         walletAddress,
@@ -217,23 +396,30 @@ export function WalletProver() {
         100, // max trades — keeps calldata under MetaMask limit (~3KB hashes + ~20KB STARK)
       );
       setTradeData(trades);
+      recordStepEnd(1);
 
       // Step 2: Fetch receipt hashes for ALL trade transactions
       currentPhase = "fetching-receipt-proof";
       setPhase(currentPhase);
+      recordStepStart(2);
       const { receiptHashes, aggregateCommitment } = await fetchReceiptHashes(
         network.rpcUrl,
         trades.txHashes,
       );
+      recordStepEnd(2);
 
       // Step 3: Load WASM
       currentPhase = "loading-wasm";
       setPhase(currentPhase);
+      recordStepStart(3);
       await loadWasmProver();
+      recordStepEnd(3);
 
       // Step 4-6: Generate STARK proof with aggregate commitment
       currentPhase = "proving";
       setPhase(currentPhase);
+      recordStepStart(4);
+      let lastProvingStage = "";
       const proof: StarkProofJSON = await generateSharpeProofWithCommitment(
         trades.returnsBps,
         aggregateCommitment,
@@ -241,13 +427,33 @@ export function WalletProver() {
         (p) => {
           currentProgress = p;
           setProgress(p);
+
+          // Track stage transitions for timing
+          if (p.stage !== lastProvingStage) {
+            const prevStage = lastProvingStage;
+            lastProvingStage = p.stage;
+
+            if (p.stage === "commit" || p.stage === "compose") {
+              if (prevStage === "trace") {
+                recordStepEnd(4);
+                recordStepStart(5);
+              }
+            } else if (p.stage === "fri") {
+              if (prevStage === "commit" || prevStage === "compose") {
+                recordStepEnd(5);
+                recordStepStart(6);
+              }
+            } else if (p.stage === "done") {
+              recordStepEnd(6);
+            }
+          }
         }
       );
 
       // Step 7: On-chain verification with commitment binding
-      // Phase A: only receipt hashes (N x 32B) go on-chain — no large calldata
       currentPhase = "sending-tx";
       setPhase(currentPhase);
+      recordStepStart(7);
       const contract = getStarkVerifierContract();
 
       // Convert receipt hashes (Uint8Array[]) to BigInt[] for on-chain U256[]
@@ -287,8 +493,9 @@ export function WalletProver() {
         transactionHash: txResult.transactionHash,
       });
 
+      recordStepEnd(7);
+
       // Compute Sharpe ratio from raw trade data
-      // Sharpe = mean / stddev, where returns are in basis points
       const N = trades.returnsBps.length;
       const sum = trades.returnsBps.reduce((a, b) => a + b, 0);
       const mean = sum / N;
@@ -325,7 +532,7 @@ export function WalletProver() {
       setPhase("idle");
       setProgress(null);
     }
-  }, [account, walletAddress, network, isValidAddress, getActiveStep]);
+  }, [account, walletAddress, network, isValidAddress, getActiveStep, recordStepStart, recordStepEnd]);
 
   const steps = deriveWalletPipelineSteps(phase, progress, error, errorAtStep);
 
@@ -466,6 +673,7 @@ export function WalletProver() {
         <CardContent>
           {steps.map((step, i) => (
             <div key={step.id} className="flex gap-4">
+              {/* Left column: icon + connector */}
               <div className="flex flex-col items-center">
                 <StepIcon status={step.status} stepIndex={i} />
                 {i < steps.length - 1 && (
@@ -478,20 +686,25 @@ export function WalletProver() {
                   />
                 )}
               </div>
-              <div className={i < steps.length - 1 ? "pb-6" : ""}>
-                <p
-                  className={`text-sm font-medium ${
-                    step.status === "active"
-                      ? "text-foreground"
-                      : step.status === "done"
-                        ? "text-green-500"
-                        : step.status === "error"
-                          ? "text-red-500"
-                          : "text-muted-foreground/60"
-                  }`}
-                >
-                  {step.title}
-                </p>
+
+              {/* Right column: text + timing + progress bar */}
+              <div className={`pb-6 flex-1 min-w-0 ${i === steps.length - 1 ? "pb-0" : ""}`}>
+                <div className="flex items-center">
+                  <p
+                    className={`text-sm font-medium ${
+                      step.status === "active"
+                        ? "text-foreground"
+                        : step.status === "done"
+                          ? "text-green-500"
+                          : step.status === "error"
+                            ? "text-red-500"
+                            : "text-muted-foreground/60"
+                    }`}
+                  >
+                    {step.title}
+                  </p>
+                  <TimingBadge status={step.status} timing={stepTimings[step.id]} />
+                </div>
                 <p className="text-xs text-muted-foreground">{step.subtitle}</p>
                 {step.status === "active" && (
                   <p className="text-xs text-orange-500 mt-1">
@@ -503,9 +716,11 @@ export function WalletProver() {
                     Failed at this step
                   </p>
                 )}
+                <StepProgressBar status={step.status} progressPercent={step.progressPercent} />
               </div>
             </div>
           ))}
+          <TotalPipelineTimer stepTimings={stepTimings} isRunning={isRunning} />
         </CardContent>
       </Card>
 

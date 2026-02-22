@@ -59,6 +59,7 @@ RealBot solves this by generating **STARK proofs** of Sharpe ratio computations 
 - **Multi-receipt commitment binding** — binds proof to specific trade receipts via hash chain
 - **Browser WASM prover** — proof generation runs entirely client-side, no backend needed
 - **~1.25M gas verification** — full STARK proof verified on-chain in a single transaction
+- **Live gas benchmark** — run on-chain verification from the Gas Comparison tab and compare measured gas against STARK/SNARK reference data
 
 ---
 
@@ -112,13 +113,15 @@ RealBot solves this by generating **STARK proofs** of Sharpe ratio computations 
 
 ## Performance Benchmarks
 
-| | STARK (RealBot) | SNARK (SP1 Groth16) |
-|--|:---:|:---:|
-| **Proof generation** | 380 ms | 18,500 ms |
-| **Proof size** | 4,864 bytes | 260 bytes |
-| **On-chain gas** | 1,250,000 | 280,000 |
-| **Verifier** | Stylus (WASM) | Solidity (Groth16) |
-| **Trusted setup** | None (transparent) | Required (SP1) |
+| | STARK (RealBot) | SNARK (SP1 Groth16) | Measured (Live) |
+|--|:---:|:---:|:---:|
+| **Proof generation** | 380 ms | 18,500 ms | Run from dashboard |
+| **Proof size** | 4,864 bytes | 260 bytes | — |
+| **On-chain gas** | 1,250,000 | 280,000 | Run from dashboard |
+| **Verifier** | Stylus (WASM) | Solidity (Groth16) | Stylus (WASM) |
+| **Trusted setup** | None (transparent) | Required (SP1) | None |
+
+> **Live Benchmark:** The Gas Comparison tab lets you run an actual on-chain STARK verification and see the measured gas cost and proof generation time plotted alongside the reference benchmarks. SNARK values are SP1 Groth16 estimates — no SNARK verifier is deployed, so only STARK can be measured live.
 
 **Why STARK?** RealBot uses STARK over SNARK because:
 - **No trusted setup** — transparent security assumptions
@@ -205,6 +208,11 @@ starkverifier/
 │   └── pkg/                     # Pre-built WASM package
 ├── app/                         # Next.js 16 App Router
 ├── components/                  # React components (shadcn/ui)
+│   ├── AgentDashboard.tsx       # Main dashboard with 4 tabs
+│   ├── ProofPipeline.tsx        # Step-by-step proof visualization
+│   ├── GasComparison.tsx        # STARK vs SNARK benchmark + live verify
+│   ├── WalletProver.tsx         # Live wallet proof generation
+│   └── AgentCard.tsx            # Bot profile card
 ├── lib/                         # TypeScript utilities
 │   ├── wasm-prover.ts           # WASM prover loader
 │   ├── gmx-fetcher.ts           # GMX V2 trade fetcher

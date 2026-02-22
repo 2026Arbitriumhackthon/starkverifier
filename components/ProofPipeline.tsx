@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -26,11 +26,13 @@ import {
   BOTS,
   ARBISCAN_TX_URL,
   derivePipelineSteps,
+  formatDuration,
   type BotProfile,
   type PipelinePhase,
   type ProofProgress,
   type VerificationRecord,
   type PipelineStepStatus,
+  type StepTiming,
 } from "@/lib/bot-data";
 import { formatGas } from "@/lib/gas-utils";
 
@@ -44,7 +46,122 @@ interface ProofPipelineProps {
   records: VerificationRecord[];
   verifyingBotId: string | null;
   onVerify: (bot: BotProfile) => void;
+  stepTimings: Record<number, StepTiming>;
 }
+
+/* ── useElapsedTime: 60fps real-time counter ─────────────── */
+
+function useElapsedTime(startTime: number | undefined, isActive: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  const rafRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!isActive || startTime === undefined) {
+      setElapsed(0);
+      return;
+    }
+
+    const tick = () => {
+      setElapsed(performance.now() - startTime);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [startTime, isActive]);
+
+  return elapsed;
+}
+
+/* ── StepProgressBar ─────────────────────────────────────── */
+
+function StepProgressBar({
+  status,
+  progressPercent,
+}: {
+  status: PipelineStepStatus;
+  progressPercent?: number;
+}) {
+  if (status === "pending" || status === "error") return null;
+
+  if (status === "done") {
+    return (
+      <div className="mt-1.5 h-1 w-full rounded-full bg-green-500/20 overflow-hidden">
+        <div className="h-full w-full rounded-full bg-green-500 transition-all duration-300" />
+      </div>
+    );
+  }
+
+  // active
+  if (progressPercent !== undefined && progressPercent > 0) {
+    // Determinate: gradient bar with known percent
+    return (
+      <div className="mt-1.5 h-1 w-full rounded-full bg-orange-500/10 overflow-hidden">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-orange-500 to-purple-600 transition-all duration-200"
+          style={{ width: `${Math.min(progressPercent, 100)}%` }}
+        />
+      </div>
+    );
+  }
+
+  // Indeterminate: sliding animation
+  return (
+    <div className="mt-1.5 h-1 w-full rounded-full bg-orange-500/10 overflow-hidden">
+      <div
+        className="h-full w-1/3 rounded-full bg-gradient-to-r from-orange-500 to-purple-600"
+        style={{ animation: "slide-indeterminate 2s ease-in-out infinite" }}
+      />
+    </div>
+  );
+}
+
+/* ── TimingBadge ─────────────────────────────────────────── */
+
+function TimingBadge({
+  status,
+  timing,
+}: {
+  status: PipelineStepStatus;
+  timing?: StepTiming;
+}) {
+  const isActive = status === "active" && timing?.startTime !== undefined && timing?.endTime === undefined;
+  const elapsed = useElapsedTime(timing?.startTime, isActive);
+
+  if (!timing) return null;
+
+  if (status === "done" && timing.endTime !== undefined) {
+    const duration = timing.endTime - timing.startTime;
+    return (
+      <span className="ml-2 text-xs font-mono text-green-500">
+        {formatDuration(duration)}
+      </span>
+    );
+  }
+
+  if (status === "active" && isActive) {
+    return (
+      <span className="ml-2 text-xs font-mono text-orange-500 tabular-nums">
+        {formatDuration(elapsed)}
+      </span>
+    );
+  }
+
+  if (status === "error" && timing.startTime) {
+    const duration = timing.endTime
+      ? timing.endTime - timing.startTime
+      : performance.now() - timing.startTime;
+    return (
+      <span className="ml-2 text-xs font-mono text-red-500">
+        {formatDuration(duration)}
+      </span>
+    );
+  }
+
+  return null;
+}
+
+/* ── StepIcon ────────────────────────────────────────────── */
 
 function StepIcon({ status, stepIndex }: { status: PipelineStepStatus; stepIndex: number }) {
   const Icon = STEP_ICONS[stepIndex];
@@ -78,6 +195,8 @@ function StepIcon({ status, stepIndex }: { status: PipelineStepStatus; stepIndex
   );
 }
 
+/* ── PipelineStepRow (updated with timing + progress bar) ── */
+
 function PipelineStepRow({
   status,
   title,
@@ -85,6 +204,8 @@ function PipelineStepRow({
   activeDetail,
   stepIndex,
   isLast,
+  progressPercent,
+  timing,
 }: {
   status: PipelineStepStatus;
   title: string;
@@ -92,6 +213,8 @@ function PipelineStepRow({
   activeDetail: string;
   stepIndex: number;
   isLast: boolean;
+  progressPercent?: number;
+  timing?: StepTiming;
 }) {
   return (
     <div className="flex gap-4">
@@ -107,21 +230,24 @@ function PipelineStepRow({
         )}
       </div>
 
-      {/* Right column: text */}
-      <div className={`pb-6 ${isLast ? "pb-0" : ""}`}>
-        <p
-          className={`text-sm font-medium ${
-            status === "active"
-              ? "text-foreground"
-              : status === "done"
-                ? "text-green-500"
-                : status === "error"
-                  ? "text-red-500"
-                  : "text-muted-foreground/60"
-          }`}
-        >
-          {title}
-        </p>
+      {/* Right column: text + timing + progress bar */}
+      <div className={`pb-6 flex-1 min-w-0 ${isLast ? "pb-0" : ""}`}>
+        <div className="flex items-center">
+          <p
+            className={`text-sm font-medium ${
+              status === "active"
+                ? "text-foreground"
+                : status === "done"
+                  ? "text-green-500"
+                  : status === "error"
+                    ? "text-red-500"
+                    : "text-muted-foreground/60"
+            }`}
+          >
+            {title}
+          </p>
+          <TimingBadge status={status} timing={timing} />
+        </div>
         <p className="text-xs text-muted-foreground">{subtitle}</p>
         {status === "active" && (
           <p className="text-xs text-orange-500 mt-1">{activeDetail}</p>
@@ -129,10 +255,59 @@ function PipelineStepRow({
         {status === "error" && (
           <p className="text-xs text-red-500 mt-1">Failed at this step</p>
         )}
+        <StepProgressBar status={status} progressPercent={progressPercent} />
       </div>
     </div>
   );
 }
+
+/* ── TotalPipelineTimer ──────────────────────────────────── */
+
+function TotalPipelineTimer({
+  stepTimings,
+  isVerifying,
+}: {
+  stepTimings: Record<number, StepTiming>;
+  isVerifying: boolean;
+}) {
+  const entries = Object.values(stepTimings);
+  if (entries.length === 0) return null;
+
+  // Find the earliest start and latest end
+  const earliest = Math.min(...entries.map((t) => t.startTime));
+  const allDone = entries.length > 0 && entries.every((t) => t.endTime !== undefined);
+
+  const isActive = isVerifying && !allDone;
+  const elapsed = useElapsedTime(earliest, isActive);
+
+  if (allDone) {
+    const latest = Math.max(...entries.map((t) => t.endTime!));
+    const totalMs = latest - earliest;
+    return (
+      <div className="border-t border-border pt-3 mt-1 flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Total Pipeline Time</span>
+        <span className="font-mono text-green-500 font-medium">
+          {formatDuration(totalMs)}
+        </span>
+      </div>
+    );
+  }
+
+  if (isActive) {
+    return (
+      <div className="border-t border-border pt-3 mt-1 flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">Total Pipeline Time</span>
+        <span className="font-mono text-orange-500 font-medium tabular-nums">
+          {formatDuration(elapsed)}
+        </span>
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/* ── TxResultCard ────────────────────────────────────────── */
 
 function TxResultCard({ record }: { record: VerificationRecord }) {
   return (
@@ -174,6 +349,8 @@ function TxResultCard({ record }: { record: VerificationRecord }) {
   );
 }
 
+/* ── ProofPipeline (main export) ─────────────────────────── */
+
 export function ProofPipeline({
   phase,
   progress,
@@ -182,6 +359,7 @@ export function ProofPipeline({
   records,
   verifyingBotId,
   onVerify,
+  stepTimings,
 }: ProofPipelineProps) {
   const [selectedBotId, setSelectedBotId] = useState<"a" | "b">("a");
   const selectedBot = BOTS.find((b) => b.id === selectedBotId)!;
@@ -247,8 +425,11 @@ export function ProofPipeline({
               activeDetail={step.activeDetail}
               stepIndex={i}
               isLast={i === steps.length - 1}
+              progressPercent={step.progressPercent}
+              timing={stepTimings[step.id]}
             />
           ))}
+          <TotalPipelineTimer stepTimings={stepTimings} isVerifying={isVerifying} />
         </CardContent>
       </Card>
 

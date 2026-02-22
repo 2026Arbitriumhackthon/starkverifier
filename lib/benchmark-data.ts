@@ -4,7 +4,7 @@
  */
 
 export interface BenchmarkEntry {
-  system: "STARK" | "SNARK";
+  system: "STARK" | "SNARK" | "Measured";
   proofGenTimeMs: number;
   proofSizeBytes: number;
   onChainGas: number;
@@ -34,4 +34,5 @@ export const BENCHMARK_DATA: BenchmarkEntry[] = [
 export const CHART_COLORS = {
   STARK: "#f97316", // orange-500
   SNARK: "#a855f7", // purple-500
+  Measured: "#22c55e", // green-500
 } as const;

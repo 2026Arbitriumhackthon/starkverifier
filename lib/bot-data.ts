@@ -2,6 +2,17 @@
  * Static bot metadata and types for the Agent Dashboard.
  */
 
+export interface StepTiming {
+  startTime: number;
+  endTime?: number;
+}
+
+/** Format a duration in ms to a human-readable string: "42ms" or "1.2s" */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)}ms`;
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 export interface BotProfile {
   id: "a" | "b";
   name: string;
@@ -78,6 +89,7 @@ export interface PipelineStep {
   subtitle: string;
   activeDetail: string;
   status: PipelineStepStatus;
+  progressPercent?: number;
 }
 
 const PIPELINE_STEP_DEFS: Omit<PipelineStep, "status">[] = [
@@ -148,7 +160,13 @@ export function derivePipelineSteps(
       activeDetail = "Waiting for on-chain confirmation...";
     }
 
-    return { ...def, activeDetail, status };
+    // Pass proving progress percent to the active proving step
+    let progressPercent: number | undefined;
+    if (def.id === activeStep && phase === "proving" && progress) {
+      progressPercent = progress.percent;
+    }
+
+    return { ...def, activeDetail, status, progressPercent };
   });
 }
 
@@ -201,6 +219,11 @@ export function deriveWalletPipelineSteps(
       activeDetail = "Waiting for on-chain confirmation...";
     }
 
-    return { ...def, activeDetail, status };
+    let progressPercent: number | undefined;
+    if (def.id === activeStep && phase === "proving" && progress) {
+      progressPercent = progress.percent;
+    }
+
+    return { ...def, activeDetail, status, progressPercent };
   });
 }
