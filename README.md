@@ -128,6 +128,28 @@ RealBot solves this by generating **STARK proofs** of Sharpe ratio computations 
 - **Keccak256 native** — Stylus precompile makes hash-heavy STARK verification efficient on-chain
 - **48x faster proof generation** — 380ms vs 18.5s matters for browser UX
 
+### Total Cost of Verification
+
+On-chain gas alone doesn't tell the full story. A fair comparison must include the **off-chain infrastructure cost** required to produce the proof:
+
+| | STARK (RealBot) | SNARK (Groth16) |
+|--|:---:|:---:|
+| **On-chain gas** | 1.25M | 280K |
+| **Proof generation** | 380ms (browser) | 18.5s (server) |
+| **Prover hardware** | User's browser (WASM) | SP1 network or high-spec server |
+| **Infrastructure cost** | $0 — client-side only | Prover server operation required |
+| **Trusted setup** | None | Required (SP1 ceremony) |
+| **Trust assumption** | Math only | Math + setup integrity |
+| **Post-quantum security** | Yes (hash-based) | No (elliptic curve) |
+
+**SNARK wins on-chain gas by 4.5x**, but:
+
+- **STARK needs zero backend** — proof generation runs entirely in the user's browser via WASM. No prover server to deploy, scale, or pay for. SNARK (Groth16) requires SP1 infrastructure or a dedicated server with 16+ GB RAM running for 18.5 seconds per proof.
+- **STARK is 48x faster** — 380ms client-side vs 18.5s server-side. For an interactive UX where the user clicks "Verify" and waits, this is the difference between instant feedback and a loading screen.
+- **STARK has no trust dependency** — SNARK requires a trusted setup ceremony. If the setup is compromised, anyone can forge proofs. STARK security relies only on hash function collision resistance.
+
+For RealBot's use case (browser-based, user-initiated, one-off verification), the total cost of STARK is **lower** despite higher on-chain gas — because there is no off-chain infrastructure to build or maintain.
+
 ### Current Limitations & Scalability
 
 This is a **hackathon demo** — the full pipeline works end-to-end, but with known constraints:
