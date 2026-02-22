@@ -406,11 +406,20 @@ starkverifier/
 
 The prover commits to specific trade data via a **receipt hash chain**. The on-chain verifier checks that the STARK proof is bound to this commitment, preventing proof reuse or data substitution after the fact.
 
+### Known Limitations (Hackathon Demo)
+
+This is a testnet demo where both prover and verifier are provided by us. The following issues are identified but intentionally deferred:
+
+- **FRI sibling Merkle verification missing** — Currently, the FRI verifier checks the Merkle path for `f(x)` but trusts the sibling value `f(-x)` provided by the prover without Merkle authentication. A malicious prover could manipulate `f(-x)` to forge arbitrary FRI folding results, breaking proof soundness. Production deployment must add Merkle verification for sibling nodes at every FRI query.
+- **Fp::inv gas cost** — Field inversion uses Fermat's little theorem (`a^(p-2) mod p`), which is mathematically correct but gas-intensive on-chain. Extended Euclidean algorithm-based inversion would reduce verification gas cost. This is a pure optimization with no security impact.
+
 ### Roadmap — Full Data Verification
 
 - Encode GMX V2 event decoding inside the STARK circuit
 - Verify Merkle Patricia Trie (MPT) membership proofs for Arbitrum receipts
 - Achieve fully trustless data binding without any off-chain assumptions
+- Add FRI sibling Merkle authentication for full proof soundness
+- Optimize field inversion for lower on-chain gas
 
 ---
 
