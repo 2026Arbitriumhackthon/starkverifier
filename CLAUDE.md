@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ProofScore — On-chain STARK-verified trading agent evaluation on Arbitrum Stylus. Full STARK pipeline: off-chain prover (Rust, WASM-compatible), on-chain verifier (Stylus Rust/WASM), EvaluationRegistry (Solidity), and a Next.js frontend. Uses Keccak256 (native Stylus precompile) for FRI Merkle commitments and Fiat-Shamir channel. Verifies Sharpe ratio proofs for trading agent performance evaluation.
+RealBot — On-chain STARK-verified trading agent evaluation on Arbitrum Stylus. Full STARK pipeline: off-chain prover (Rust, WASM-compatible), on-chain verifier (Stylus Rust/WASM), EvaluationRegistry (Solidity), and a Next.js frontend. Uses Keccak256 (native Stylus precompile) for FRI Merkle commitments and Fiat-Shamir channel. Verifies Sharpe ratio proofs for trading agent performance evaluation.
 
 ## Common Commands
 

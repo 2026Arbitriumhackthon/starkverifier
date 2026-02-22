@@ -169,7 +169,7 @@ export function AgentDashboard() {
   return (
     <section className="container mx-auto px-4 py-12 space-y-8">
       <div className="text-center space-y-2">
-        <h3 className="text-2xl font-bold">ProofScore Dashboard</h3>
+        <h3 className="text-2xl font-bold">RealBot Dashboard</h3>
         <p className="text-muted-foreground">
           Select a trading agent and verify its Sharpe ratio on-chain with STARK proofs.
         </p>

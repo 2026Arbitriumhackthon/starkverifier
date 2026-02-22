@@ -17,7 +17,7 @@ export default function Home() {
               <div>
                 <h1 className="text-xl font-bold">STARK Stylus Verifier</h1>
                 <p className="text-xs text-muted-foreground">
-                  ProofScore — On-Chain Agent Evaluation
+                  RealBot — On-Chain Agent Evaluation
                 </p>
               </div>
             </div>
@@ -36,7 +36,7 @@ export default function Home() {
         <div className="container mx-auto px-4 py-12">
           <div className="max-w-3xl mx-auto text-center space-y-4">
             <Badge className="bg-gradient-to-r from-orange-500 to-purple-600">
-              Arbitrum APAC Mini Hackathon 2026
+              Arbitrum Open House NYC: Online Buildathon
             </Badge>
             <h2 className="text-4xl sm:text-5xl font-bold tracking-tight">
               On-Chain{" "}
@@ -134,11 +134,11 @@ export default function Home() {
         <div className="container mx-auto px-4 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              Built for Arbitrum APAC Mini Hackathon 2026
+              Built for Arbitrum Open House NYC: Online Buildathon
             </p>
             <div className="flex items-center gap-4">
               <a
-                href="https://github.com/hoddukzoa12/starkverifier.git"
+                href="https://github.com/2026Arbitriumhackthon/starkverifier.git"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
