@@ -25,29 +25,139 @@ RealBot solves this by generating **STARK proofs** of Sharpe ratio computations 
 
 ## How It Works
 
-```
-  Fetch Real Trades        Generate STARK Proof         Verify On-Chain
-  ─────────────────   →    ────────────────────   →    ─────────────────
-   GMX V2 events              Browser WASM              Arbitrum Stylus
-   (Arbitrum One)              (380ms)                   (~1.25M gas)
-```
-
-```
-┌──────────────┐     ┌──────────────────────┐     ┌──────────────────────┐
-│   GMX V2     │     │   WASM Prover        │     │   Stylus Verifier    │
-│   Mainnet    │────→│                      │────→│                      │
-│              │     │  Sharpe trace (6 col) │     │  Fiat-Shamir channel │
-│  Trade data  │     │  Keccak256 Merkle     │     │  AIR constraint check│
-│  PnL events  │     │  FRI commitment       │     │  FRI low-degree test │
-│              │     │  Composition poly     │     │  Commitment binding  │
-└──────────────┘     └──────────────────────┘     └──────────────────────┘
-                           STARK Proof
-                        (ABI-encoded calldata)
-```
-
 1. **Fetch** — Pull real trade history from GMX V2 on Arbitrum One mainnet
 2. **Prove** — Generate a STARK proof of the Sharpe ratio computation entirely in the browser (WASM)
 3. **Verify** — Submit the proof to the Stylus verifier contract on Arbitrum Sepolia for on-chain verification
+
+### System Architecture
+
+```mermaid
+graph TB
+    subgraph USER["User"]
+        W[Wallet] --> FE[Frontend]
+    end
+
+    subgraph TABS["Tabs"]
+        T1[Agent Dashboard]
+        T2[Proof Pipeline]
+        T3[Live Wallet]
+        T4[Gas Comparison]
+    end
+
+    subgraph OFFCHAIN["Off-Chain (Browser WASM)"]
+        GMX[GMX V2 Fetcher]
+        REC[Receipt Proof]
+        subgraph PROVE["STARK Proving (~380ms)"]
+            S1[Trace] --> S2[Commit] --> S3[FRI]
+        end
+    end
+
+    subgraph ONCHAIN["On-Chain (Arbitrum Sepolia)"]
+        subgraph CONTRACT["STARK Verifier v6"]
+            F1[verifySharpeProof]
+            F2[verifySharpeWithCommitment]
+        end
+        V1[AIR Check] --> V2[FRI Check] --> V3[Commitment Check]
+    end
+
+    subgraph CRYPTO["Crypto Stack"]
+        K[Keccak256] --- BN[BN254 Field]
+        MK[Merkle Trees] --- FS[Fiat-Shamir]
+    end
+
+    FE --> TABS
+
+    T1 --> S1
+    T3 --> GMX
+    T4 -->|benchmark| S1
+    GMX -->|trades| REC
+    REC -->|commitment| S1
+
+    S3 -->|proof| F1
+    S3 -->|proof + hashes| F2
+    F1 --> V1
+    F2 --> V1
+    V3 -->|verified| FE
+
+    K --> MK
+    K --> FS
+
+    classDef orange fill:#f97316,stroke:#ea580c,color:#fff
+    classDef purple fill:#a855f7,stroke:#9333ea,color:#fff
+    classDef green fill:#22c55e,stroke:#16a34a,color:#fff
+    classDef blue fill:#3b82f6,stroke:#2563eb,color:#fff
+
+    class F1,F2,CONTRACT orange
+    class S1,S2,S3 purple
+    class V3,REC green
+    class GMX blue
+```
+
+### Bot Verification Flow
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant FE as Frontend
+    participant P as WASM Prover
+    participant V as Verifier (Stylus)
+
+    U->>FE: Select Bot, click Verify
+    activate FE
+
+    rect rgba(168, 85, 247, 0.1)
+        FE->>P: Load WASM
+        P-->>FE: Ready
+        FE->>P: Generate proof
+        P-->>FE: STARK Proof (~380ms)
+    end
+
+    rect rgba(249, 115, 22, 0.1)
+        FE->>V: verifySharpeProof()
+        Note right of V: AIR + FRI check
+        V-->>FE: Verified (~1.25M gas)
+    end
+
+    FE-->>U: Done
+    deactivate FE
+```
+
+### Live Wallet Verification Flow
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant FE as Frontend
+    participant GMX as GMX V2
+    participant P as WASM Prover
+    participant V as Verifier (Stylus)
+
+    U->>FE: Enter address, click Verify
+    activate FE
+
+    rect rgba(59, 130, 246, 0.1)
+        FE->>GMX: Fetch trades
+        GMX-->>FE: returns[], txHashes[]
+        FE->>V: Fetch receipt hashes
+        V-->>FE: hashes[], commitment
+    end
+
+    rect rgba(168, 85, 247, 0.1)
+        FE->>P: Load WASM
+        P-->>FE: Ready
+        FE->>P: Generate proof + commitment
+        P-->>FE: STARK Proof (~380ms)
+    end
+
+    rect rgba(249, 115, 22, 0.1)
+        FE->>V: verifySharpeWithCommitment()
+        Note right of V: AIR + FRI +<br/>receipt binding
+        V-->>FE: Verified (~1.25M gas)
+    end
+
+    FE-->>U: Done
+    deactivate FE
+```
 
 ---
 

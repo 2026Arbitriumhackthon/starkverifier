@@ -1,0 +1,26 @@
+%%{ init: { "theme": "dark", "sequence": { "mirrorActors": false, "width": 180 } } }%%
+
+sequenceDiagram
+    actor U as User
+    participant FE as Frontend
+    participant P as WASM Prover
+    participant V as Verifier (Stylus)
+
+    U->>FE: Select Bot, click Verify
+    activate FE
+
+    rect rgba(168, 85, 247, 0.1)
+        FE->>P: Load WASM
+        P-->>FE: Ready
+        FE->>P: Generate proof
+        P-->>FE: STARK Proof (~380ms)
+    end
+
+    rect rgba(249, 115, 22, 0.1)
+        FE->>V: verifySharpeProof()
+        Note right of V: AIR + FRI check
+        V-->>FE: Verified (~1.25M gas)
+    end
+
+    FE-->>U: Done
+    deactivate FE

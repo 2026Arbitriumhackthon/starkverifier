@@ -1,0 +1,31 @@
+%%{ init: { "theme": "dark" } }%%
+
+graph LR
+    subgraph HASH["Hash"]
+        K[Keccak256<br/>Stylus precompile]
+    end
+
+    subgraph FIELD["Field"]
+        F[BN254 Scalar<br/>Montgomery form]
+    end
+
+    subgraph COMMIT["Commitment"]
+        M[FRI Merkle Trees]
+        FS[Fiat-Shamir Channel]
+    end
+
+    subgraph AIR["Sharpe Ratio AIR"]
+        T[6-col Trace] --> TC[5 Transition] --> BC[4 Boundary]
+    end
+
+    K --> M
+    K --> FS
+    F --> T
+
+    classDef orange fill:#f97316,stroke:#ea580c,color:#fff
+    classDef purple fill:#a855f7,stroke:#9333ea,color:#fff
+    classDef blue fill:#3b82f6,stroke:#2563eb,color:#fff
+
+    class K,FS orange
+    class T,TC,BC purple
+    class M blue

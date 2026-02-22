@@ -1,0 +1,61 @@
+%%{ init: { "theme": "dark" } }%%
+
+graph TB
+    subgraph USER["User"]
+        W[Wallet] --> FE[Frontend]
+    end
+
+    subgraph TABS["Tabs"]
+        T1[Agent Dashboard]
+        T2[Proof Pipeline]
+        T3[Live Wallet]
+        T4[Gas Comparison]
+    end
+
+    subgraph OFFCHAIN["Off-Chain (Browser WASM)"]
+        GMX[GMX V2 Fetcher]
+        REC[Receipt Proof]
+        subgraph PROVE["STARK Proving (~380ms)"]
+            S1[Trace] --> S2[Commit] --> S3[FRI]
+        end
+    end
+
+    subgraph ONCHAIN["On-Chain (Arbitrum Sepolia)"]
+        subgraph CONTRACT["STARK Verifier v6"]
+            F1[verifySharpeProof]
+            F2[verifySharpeWithCommitment]
+        end
+        V1[AIR Check] --> V2[FRI Check] --> V3[Commitment Check]
+    end
+
+    subgraph CRYPTO["Crypto Stack"]
+        K[Keccak256] --- BN[BN254 Field]
+        MK[Merkle Trees] --- FS[Fiat-Shamir]
+    end
+
+    FE --> TABS
+
+    T1 --> S1
+    T3 --> GMX
+    T4 -->|benchmark| S1
+    GMX -->|trades| REC
+    REC -->|commitment| S1
+
+    S3 -->|proof| F1
+    S3 -->|proof + hashes| F2
+    F1 --> V1
+    F2 --> V1
+    V3 -->|verified| FE
+
+    K --> MK
+    K --> FS
+
+    classDef orange fill:#f97316,stroke:#ea580c,color:#fff
+    classDef purple fill:#a855f7,stroke:#9333ea,color:#fff
+    classDef green fill:#22c55e,stroke:#16a34a,color:#fff
+    classDef blue fill:#3b82f6,stroke:#2563eb,color:#fff
+
+    class F1,F2,CONTRACT orange
+    class S1,S2,S3 purple
+    class V3,REC green
+    class GMX blue

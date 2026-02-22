@@ -1,0 +1,34 @@
+%%{ init: { "theme": "dark", "sequence": { "mirrorActors": false, "width": 180 } } }%%
+
+sequenceDiagram
+    actor U as User
+    participant FE as Frontend
+    participant GMX as GMX V2
+    participant P as WASM Prover
+    participant V as Verifier (Stylus)
+
+    U->>FE: Enter address, click Verify
+    activate FE
+
+    rect rgba(59, 130, 246, 0.1)
+        FE->>GMX: Fetch trades
+        GMX-->>FE: returns[], txHashes[]
+        FE->>V: Fetch receipt hashes
+        V-->>FE: hashes[], commitment
+    end
+
+    rect rgba(168, 85, 247, 0.1)
+        FE->>P: Load WASM
+        P-->>FE: Ready
+        FE->>P: Generate proof + commitment
+        P-->>FE: STARK Proof (~380ms)
+    end
+
+    rect rgba(249, 115, 22, 0.1)
+        FE->>V: verifySharpeWithCommitment()
+        Note right of V: AIR + FRI +<br/>receipt binding
+        V-->>FE: Verified (~1.25M gas)
+    end
+
+    FE-->>U: Done
+    deactivate FE
