@@ -128,6 +128,37 @@ RealBot solves this by generating **STARK proofs** of Sharpe ratio computations 
 - **Keccak256 native** — Stylus precompile makes hash-heavy STARK verification efficient on-chain
 - **48x faster proof generation** — 380ms vs 18.5s matters for browser UX
 
+### Current Limitations & Scalability
+
+This is a **hackathon demo** — the full pipeline works end-to-end, but with known constraints:
+
+| Metric | Current (Demo) | Notes |
+|--------|:--------------:|-------|
+| Max trades | 100 | Capped to keep calldata under MetaMask limits |
+| End-to-end time | ~19s | See breakdown below |
+| On-chain gas | ~1.25M | Single Arbitrum Sepolia transaction |
+
+**Where does 19 seconds go?**
+
+| Stage | Time | Bottleneck |
+|-------|:----:|-----------|
+| Trade fetch + Receipt proof | ~5-8s | RPC network I/O |
+| WASM prover load | ~1s | One-time init (cached after) |
+| **STARK proof generation** | **~380ms** | Actual computation |
+| TX send + block confirmation | ~8-10s | Blockchain finality |
+
+The STARK proof itself takes **under 400ms** — the remaining ~18s is network I/O and block confirmation, which applies to any proving system equally.
+
+**100 trades is statistically sufficient** for Sharpe ratio estimation (mean/variance ratio). Academic literature typically uses 30-60 observations as a minimum sample. However, production trading bots may execute thousands of trades, which would require:
+
+- **1,000 trades** — proof gen ~2-3s, gas ~2-3M. Still feasible in a single tx.
+- **10,000+ trades** — requires **recursive STARKs** (proving a proof of proofs) or batch aggregation.
+
+**Planned optimizations:**
+- Parallel receipt proof fetching (reduce I/O by ~50%)
+- WASM preloading on tab entry
+- Recursive STARK composition for large trade sets
+
 ---
 
 ## Quick Start
