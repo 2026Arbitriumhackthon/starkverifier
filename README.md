@@ -5,7 +5,9 @@
 [![Rust](https://img.shields.io/badge/Rust-WASM-orange.svg)](https://www.rust-lang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
 
-> **STARK-verified Sharpe ratio proofs for DeFi trading agents — no trusted setup, fully on-chain**
+> **Prove your trading performance without exposing your alpha.**
+>
+> STARK-verified Sharpe ratio proofs for DeFi trading agents — zero-knowledge, no trusted setup, fully on-chain.
 
 Built for **Arbitrum Open House NYC: Online Buildathon** | APAC Mini Hackathon 1st Place
 
@@ -13,13 +15,38 @@ Built for **Arbitrum Open House NYC: Online Buildathon** | APAC Mini Hackathon 1
 
 ## Problem
 
-DeFi trading agents and bots report their own performance. There is no way to verify these claims:
+DeFi trading agents face a **trust-versus-privacy dilemma**:
 
-- **Self-reported returns are easy to fake** — anyone can claim a 200% APY
-- **Centralized leaderboards require trust** — the platform operator can manipulate rankings
-- **No mathematical guarantee** — users have no way to independently verify a Sharpe ratio
+- **Performance claims are unverifiable** — anyone can claim a 200% APY. Centralized leaderboards require trusting the platform operator. Users have no mathematical guarantee.
+- **Proving performance leaks alpha** — a profitable bot that reveals its trade details to prove returns also exposes the strategy that generates those returns. Competitors can copy the strategy, and the bot's edge disappears.
 
-RealBot solves this by generating **STARK proofs** of Sharpe ratio computations from real trade data and verifying them **on-chain on Arbitrum Stylus**. The result is a trustless, mathematically verified performance score that no one can forge.
+The result: **good bots stay silent** (to protect their alpha), while **bad bots claim whatever they want** (because no one can check). Capital flows to marketing, not performance.
+
+RealBot breaks this dilemma. Using **STARK proofs**, a trading agent can prove its Sharpe ratio is genuine — computed from real, committed trade data — **without revealing the underlying trades**. The proof is verified **on-chain on Arbitrum Stylus**, producing a trustless performance score that no one can forge and no one can reverse-engineer.
+
+---
+
+## Who Uses This and Why
+
+### Fund Managers & Signal Providers
+> *"I manage $5M in DeFi strategies. LPs want to see my track record before allocating, but if I publish my trades, everyone front-runs me."*
+
+RealBot lets fund managers **prove a verified Sharpe ratio to attract capital** without disclosing individual positions. LPs can trust the number because it's mathematically proven on-chain — not because the manager says so.
+
+### Protocol DAOs & Agent Permissions
+> *"Our DAO wants to grant trading permissions to AI agents, but how do we know which agents are actually good?"*
+
+Protocols can require agents to submit a verified Sharpe proof before receiving delegation. The on-chain EvaluationRegistry becomes a **permissionless credential** — any protocol can query it to gate access based on proven performance.
+
+### Agent-to-Agent Trust
+> *"My agent needs to pick a sub-agent for hedging. There are 200 candidates. Which one is real?"*
+
+In an autonomous agent economy, agents need to evaluate each other without human judgment. A STARK-verified performance score is a **machine-readable, unforgeable credential** that agents can consume programmatically to make delegation and routing decisions.
+
+### Competitive Marketplaces
+> *"I run a trading bot marketplace. Users don't trust the leaderboard because I could fake it."*
+
+RealBot replaces trust-me leaderboards with **cryptographically verified rankings**. The marketplace operator can't manipulate scores because verification happens on-chain, not on their server.
 
 ---
 
@@ -163,6 +190,7 @@ sequenceDiagram
 
 ## Key Features
 
+- **Privacy-preserving verification** — proves Sharpe ratio without revealing individual trades, positions, or strategy details
 - **STARK-verified Sharpe ratio** — no trusted setup, transparent security, post-quantum ready
 - **Real GMX V2 trade data** — pulls actual trades from Arbitrum One mainnet
 - **Arbitrum Stylus verifier** — Rust/WASM on-chain contract with native Keccak256 precompile
@@ -400,6 +428,21 @@ starkverifier/
 
 ---
 
+## What the Proof Reveals (and What It Doesn't)
+
+| | Revealed on-chain | Hidden |
+|--|:--:|:--:|
+| **Sharpe ratio** | Verified score | - |
+| **Trade count** | Total number | - |
+| **Aggregate return** | Sum of returns | - |
+| **Individual trades** | - | Entry/exit prices, sizes, timing |
+| **Positions** | - | Long/short, leverage, pairs |
+| **Strategy logic** | - | Signals, parameters, models |
+
+The verifier confirms that the claimed Sharpe ratio is **correctly computed from a committed dataset** — but learns nothing about the individual data points. This is the core value proposition: **auditable performance, private strategy**.
+
+---
+
 ## Security Model
 
 ### Phase A (Current) — Commitment Binding
@@ -536,8 +579,11 @@ Decode **GMX V2 event logs** (PositionIncrease, PositionDecrease) directly insid
 ### Multi-DEX Support
 Extend beyond GMX V2 to support trade data from **Uniswap V3**, **dYdX**, and other DEXs on Arbitrum. Each DEX gets an event decoder module that feeds into the same Sharpe ratio AIR.
 
-### EvaluationRegistry Integration
-Record verified Sharpe scores in the on-chain **EvaluationRegistry** contract. Enable agent ranking, historical performance tracking, and composable reputation scores that other protocols can query.
+### EvaluationRegistry & Incentive Layer
+Record verified Sharpe scores in the on-chain **EvaluationRegistry** contract. Enable agent ranking, historical performance tracking, and composable reputation scores that other protocols can query. Planned incentive mechanisms:
+- **Staking for credibility** — agents stake tokens alongside their proof; slash on proven fraud, reward for sustained performance
+- **Gated access** — protocol DAOs can require a minimum verified Sharpe before granting trading permissions or capital allocation
+- **Reputation composability** — other protocols can query the registry as an on-chain credential for agent-to-agent trust
 
 ### Mainnet Deployment
 Migrate from Arbitrum Sepolia to **Arbitrum One mainnet**. Optimize gas costs and conduct security audits before production deployment.
