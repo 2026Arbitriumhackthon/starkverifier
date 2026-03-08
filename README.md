@@ -9,7 +9,7 @@
 >
 > STARK-verified Sharpe ratio proofs for DeFi trading agents — zero-knowledge, no trusted setup, fully on-chain.
 
-Built for **Arbitrum Open House NYC: Online Buildathon** | APAC Mini Hackathon 1st Place
+Built for **Arbitrum Open House NYC** | APAC Mini Hackathon 1st Place
 
 ---
 
